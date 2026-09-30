@@ -47,18 +47,25 @@ FFMPEG = ffmpeg_exe()
 
 # ============================================================== narration
 SCENES = [
-    ("intro", ["Criminals can't just spend stolen money, because big purchases make people ask: where did this come from?",
-               "Money laundering gives dirty money a fake, clean-looking story. It works in three steps."]),
-    ("dirty", ["Say a griefer steals 64 emeralds. If he walks into a shop and buys a mansion with them, he gets caught."]),
-    ("place", ["Step one, placement: getting the cash into the system.",
-               "He splits it into small deposits at different banks and shops, so no single amount looks suspicious."]),
-    ("layer", ["Step two, layering: hiding where it came from.",
-               "The money gets moved again and again, through fake companies and offshore accounts, until nobody can follow the trail."]),
-    ("integ", ["Step three, integration: bringing it back as if it were honest.",
-               "His fake bakery reports the emeralds as sales, so now it's profit, and he can buy the mansion in the open."]),
-    ("flags", ["But banks are trained to spot this.",
-               "Lots of small deposits, a tiny bakery earning way too much, and money moving in circles are all red flags."]),
-    ("caught", ["When investigators follow the trail back, the fake story falls apart, and the emeralds get seized."]),
+    ("intro", ["Criminals have a problem: stolen money is hard to spend.",
+               "Pay for something big with a pile of cash, and people start asking where it came from.",
+               "Money laundering gives dirty money a fake history, so it looks legally earned. It usually takes three steps."]),
+    ("dirty", ["Say a griefer steals 64 emeralds.",
+               "If he tries to buy a mansion with them, the seller, the bank, and every villager will ask: how did you afford that?"]),
+    ("place", ["Step one, placement: getting the cash into the financial system.",
+               "Banks must report large cash deposits, so he splits the pile into small ones, just under the limit, and spreads them across different banks and shops.",
+               "That trick has a name, structuring, and it's a crime on its own."]),
+    ("layer", ["Step two, layering: making the money hard to trace.",
+               "He moves it again and again, between shell companies that exist only on paper, and offshore accounts in places that share little information.",
+               "Every transfer adds a layer, until the original source is buried."]),
+    ("integ", ["Step three, integration: bringing the money back as honest income.",
+               "His bakery barely sells any bread, but its books claim 64 emeralds of sales.",
+               "The dirty emeralds come out as clean profit, with paperwork to prove it, and now he can buy the mansion in the open."]),
+    ("flags", ["But all of this leaves clues, and banks are required to watch for them.",
+               "Deposits sitting just under the limit, a tiny business earning far more than it could, and money looping through companies with no real activity.",
+               "Each one is a red flag, and banks report them to investigators."]),
+    ("caught", ["Investigators follow the money one transfer at a time, back to the stolen emeralds.",
+                "The fake story falls apart, the mansion and the money are seized, and laundering is charged as its own crime, on top of the theft."]),
 ]
 LEAD, GAP, SGAP, TAIL = 0.6, 0.25, 0.5, 2.0
 
@@ -624,15 +631,15 @@ def scene_intro(lt, S, wd):
 
 def scene_dirty(lt, S, wd):
     D = S["dur"]
-    look = lt > word_t(S, "buys") - 0.3
+    look = lt > word_t(S, "villager") - 0.3
     gy0 = yaw_to(G_HOME, (88, 12, 93))
     face = np.add(G_HOME, (0, 1.55, 0))
     vmid = (86.0, 13.6, 98.6)
     shots = [(0, *around(face, gy0, 2.6, 0.3), 58),
              (word_t(S, "64") - 0.1, *around(STASH_C, 2.35, 3.8, 1.5), 60),
-             (word_t(S, "walks") - 0.1, *around(face, gy0, 3.6, 0.8), 62),
-             (word_t(S, "buys") - 0.25, (83.4, 13.9, 96.6), vmid, 62),
-             (word_t(S, "caught") - 0.1, (88.5, 16.5, 91.5), (81, 13.2, 100.5), 70)]
+             (word_t(S, "tries") - 0.1, *around(face, gy0, 3.6, 0.8), 62),
+             (word_t(S, "villager") - 0.25, (83.4, 13.9, 96.6), vmid, 62),
+             (word_t(S, "afford") - 0.1, (88.5, 16.5, 91.5), (81, 13.2, 100.5), 70)]
     cam = shot_cam(lt, shots)
     boxes = W.player(GRIEFER_SK, G_HOME, yaw_to(G_HOME, (88, 12, 93)), head_yaw=0.5 * math.sin(lt * 3) if look else 0.0)
     vpos = [(85.6, 12.0, 99.8), (86.4, 12.0, 97.4)]
@@ -646,7 +653,7 @@ def scene_dirty(lt, S, wd):
     labels = [(np.add(G_HOME, (0, 2.3, 0)), "Griefer", (255, 255, 255))]
     blobs = [(G_HOME[0], G_HOME[2], 0.6)] + [(p[0], p[2], 0.6) for p in vpos]
     return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, values=vals, labels=labels,
-                inv=inv(64, 0) if lt > 0.6 else None, sfx=[(S["t0"] + word_t(S, "caught"), "thud", 1)])
+                inv=inv(64, 0) if lt > 0.6 else None, sfx=[(S["t0"] + word_t(S, "afford"), "thud", 1)])
 
 
 PLACE_ROUTE = [(79.5, 12.0, 88.5), (84.0, 12.0, 85.6), (94.0, 12.0, 85.6), (103.2, 12.0, 85.6)]
@@ -669,7 +676,8 @@ def scene_place(lt, S, wd):
     for tt, i in visits:
         d = np.array(doors[i])
         shots.append((tt - 0.12, d + np.array((1.2, 1.7, 4.4)), d + np.array((-0.9, 1.1, -0.6)), 62))
-    shots.append((word_t(S, "suspicious") - 0.2, (94.0, 20.5, 96.5), (94.0, 14.0, 81.0), 70))
+    shots.insert(1, (word_t(S, "report") - 0.15, (87.0, 15.2, 95.5), (86.0, 15.4, 80.5), 66))
+    shots.append((word_t(S, "structuring") - 0.2, (94.0, 20.5, 96.5), (94.0, 14.0, 81.0), 70))
     cam = shot_cam(lt, shots, blend=0.35)
     boxes = W.player(GRIEFER_SK, gp, gyaw, walk=gw)
     sprites_, vals, sfx = [], [], []
@@ -684,8 +692,13 @@ def scene_place(lt, S, wd):
             sfx.append((S["t0"] + tj + 0.5, "coin", 0.9 + 0.05 * j))
             if lt > tj + 0.55:
                 dirty -= 4
-        if lt > tt + 0.4:
-            vals.append((W.top_of(W.BANKS[i], -1.2), [("+ small deposit", (255, 255, 255))], None))
+        if lt > tt + 0.4 and lt < word_t(S, "structuring") - 0.1:
+            vals.append((W.top_of(W.BANKS[i], -1.2), [("+16 (under 20)", (255, 255, 255))], None))
+    t_rep = word_t(S, "report")
+    if t_rep - 0.1 < lt < word_t(S, "structuring"):
+        vals.append((W.top_of(W.BANKS[0], -0.4), [("Reports cash over 20", (255, 226, 60))], None))
+    if lt > word_t(S, "structuring") - 0.1:
+        vals.append((np.add(gp, (0, 3.0, 0)), [("STRUCTURING = CRIME", (255, 85, 85))], None))
     labels = [(np.add(gp, (0, 2.3, 0)), "Griefer", (255, 255, 255))]
     for b in W.BANKS:
         labels.append((W.top_of(b, 1.0), b[0], (255, 226, 60)))
@@ -725,8 +738,11 @@ def scene_layer(lt, S, wd):
                 segs.append((W.top_of(a_, 0), W.top_of(b_, 0), t_s - (h + 1) * hop))
         if k < 0.1 and stream == 0:
             sfx.append((S["t0"] + lt, "whoosh", 1))
-    for h in range(40):
+    h = 0
+    while 0.5 + h * hop < D - 0.3:           # coin ticks only while this scene is on screen
         sfx.append((S["t0"] + 0.5 + h * hop, "coin", 0.8 + 0.02 * (h % 8)))
+        h += 1
+    transfers = sum(max(0, int((lt - 0.5 - st * 0.35) / hop)) for st in range(3))
     labels = [(W.top_of(b, 1.8), b[0], (255, 226, 60) if "Shell" in b[0] or "Offshore" in b[0] else (255, 255, 255))
               for b in W.SHELLS + W.BANKS]
     if lead is None:
@@ -736,9 +752,17 @@ def scene_layer(lt, S, wd):
     chase = (lead + np.array((5.5, 3.5, -6.0)), lead)
     s1 = W.SHELLS[0]
     fac = np.array(W.door_of(s1))
-    shots = [(0, *chase, 66), (word_t(S, "fake") - 0.15, fac + np.array((-8.5, 4.5, -4.0)), fac + np.array((2.5, 2.2, 0)), 66),
-             (word_t(S, "offshore") - 0.15, *chase, 66),
-             (word_t(S, "trail") - 0.2, c + np.array((-20 * math.sin(0.5 + a), 36, -20 * math.cos(0.5 + a))), c, 80)]
+    off = np.array(W.door_of(W.SHELLS[2]))
+    t_shell, t_off, t_every = word_t(S, "shell"), word_t(S, "offshore"), word_t(S, "every")
+    shots = [(0, *chase, 66), (t_shell - 0.15, fac + np.array((-8.5, 4.5, -4.0)), fac + np.array((2.5, 2.2, 0)), 66),
+             (t_off - 0.15, off + np.array((-3.0, 4.0, -8.5)), off + np.array((0.5, 2.2, 2.5)), 66),
+             (t_every - 0.15, *chase, 66),
+             (word_t(S, "buried") - 0.3, c + np.array((-20 * math.sin(0.5 + a), 36, -20 * math.cos(0.5 + a))), c, 80)]
+    vals = []
+    if t_shell - 0.1 < lt < t_off:
+        vals.append((W.top_of(s1, 0.4), [("No workers. No products.", (255, 255, 255))], None))
+    if t_off - 0.1 < lt < t_every:
+        vals.append((W.top_of(W.SHELLS[2], 0.4), [("Secret accounts", (255, 255, 255))], None))
     cam = shot_cam(lt, shots, blend=0.45, push=0.0)
     ca = fade(lt, 0.1, D + 1, 0.3)
 
@@ -753,13 +777,17 @@ def scene_layer(lt, S, wd):
             d.line([a1[:2], b1[:2]], fill=(255, 70, 70, al), width=7)
         fr.paste(lay, (0, 0), lay)
         put(fr, step_card(2, "LAYERING", ca), OW / 2, 330)
-    return dict(cam=cam, boxes=[], grid=wd.base, labels=labels, sprites=sprites_, overlays=[web],
+        if transfers > 0:
+            put(fr, ctext(f"Transfers: {transfers}", 56), OW / 2, 560)
+    return dict(cam=cam, boxes=[], grid=wd.base, labels=labels, values=vals, sprites=sprites_, overlays=[web],
                 inv=inv("??", 0), sfx=sfx)
 
 
 def scene_integ(lt, S, wd):
     D = S["dur"]
-    t_bak = word_t(S, "sales")
+    t_bak = word_t(S, "books")
+    t_bread = word_t(S, "bread")
+    t_dirty = word_t(S, "dirty")
     t_spend = word_t(S, "buy")
     t_man = word_t(S, "mansion")
     bak_door = W.door_of(W.BAKERY)
@@ -770,7 +798,7 @@ def scene_integ(lt, S, wd):
         gyaw = yaw_to(route[0], bak_door)
     bd = np.array(bak_door)
     shots = [(0, (103.8, 17.0, 86.0), (113.5, 14.2, 80.5), 66),
-             (word_t(S, "emeralds") - 0.15, bd + np.array((-4.8, 2.2, 3.4)), bd + np.array((0.2, 1.2, 0)), 62),
+             (t_dirty - 0.15, bd + np.array((-4.8, 2.2, 3.4)), bd + np.array((0.2, 1.2, 0)), 62),
              (t_spend - 0.15, gp + np.array((-1.6, 1.9, 3.6)), gp + np.array((0, 1.45, 0)), 58),
              (t_man - 0.2, (103.8, 23.5, 97.6), (119.5, 14.5, 99.0), 76)]
     cam = shot_cam(lt, shots, blend=0.45)
@@ -778,7 +806,7 @@ def scene_integ(lt, S, wd):
     sprites_, sfx = [], []
     clean = 0
     for j in range(8):
-        tj = word_t(S, "emeralds") + 0.1 + j * 0.2
+        tj = t_dirty + 0.1 + j * 0.2
         k = (lt - tj) / 0.6
         if 0 <= k < 1:
                 sprites_.append((arc(np.add(bak_door, (1.0, 1.2, 0)), np.add(route[0], (0, 1.2, 0)), k, 1.5), 0.3, EMERALD))
@@ -795,8 +823,10 @@ def scene_integ(lt, S, wd):
     for i in range(0, 12):
         sfx.append((S["t0"] + t_man - 0.6 + i * 0.27, "pop", 0.9 + 0.03 * i))
     vals = [(W.top_of(W.BAKERY, 1.9), [(W.BAKERY[0], (255, 226, 60))], None)]
-    if lt > t_bak:
-        vals.append((W.top_of(W.BAKERY, 0.5), [("'Sales': +64", (85, 255, 85))], EMERALD))
+    if t_bread - 0.1 < lt < t_spend:
+        vals.append((W.top_of(W.BAKERY, 0.3), [("Bread sold: 3", (255, 255, 255))], None))
+    if t_bak - 0.1 < lt < t_spend:
+        vals.append((W.top_of(W.BAKERY, -1.0), [("Books say: 64 sales", (85, 255, 85))], EMERALD))
     if kb > 40:
         vals.append(((120.5, 21.5, 99.0), [("New mansion", (255, 255, 255))], None))
     ca = fade(lt, 0.1, D + 1, 0.3)
@@ -808,18 +838,18 @@ def scene_integ(lt, S, wd):
                 sprites=sprites_, overlays=[card], inv=inv(0, min(64, clean)), sfx=sfx)
 
 
-FLAG_ROWS = [("Lots of small deposits", "small", W.BANKS),
+FLAG_ROWS = [("Deposits just under the limit", "sitting", W.BANKS),
              ("Tiny business, huge income", "tiny", [W.BAKERY]),
-             ("Money going in circles", "circles", W.SHELLS)]
+             ("Money looping through shells", "looping", W.SHELLS)]
 
 
 def scene_flags(lt, S, wd):
     D = S["dur"]
     shots = [(0, (89.5, 15.0, 91.5), (85.5, 14.5, 80.5), 62),
-             (word_t(S, "small") - 0.15, (92.0, 22.5, 91.5), (85.8, 16.5, 80.4), 66),
-             (word_t(S, "deposits") + 0.2, (94.0, 23.0, 94.0), (94.0, 15.0, 80.0), 70),
+             (word_t(S, "sitting") - 0.15, (92.0, 22.5, 91.5), (85.8, 16.5, 80.4), 66),
+             (word_t(S, "limit") + 0.3, (94.0, 23.0, 94.0), (94.0, 15.0, 80.0), 70),
              (word_t(S, "tiny") - 0.15, (109.5, 20.0, 86.8), (115.5, 17.5, 80.4), 60),
-             (word_t(S, "circles") - 0.15, (98.0, 33.0, 96.0), (108.5, 14.0, 99.0), 78),
+             (word_t(S, "looping") - 0.15, (98.0, 33.0, 96.0), (108.5, 14.0, 99.0), 78),
              (word_t(S, "red") - 0.15, (92.0, 38.0, 104.0), (102.0, 13.0, 88.0), 80)]
     cam = shot_cam(lt, shots, blend=0.4)
     g = wd.mansion.copy()
@@ -835,7 +865,7 @@ def scene_flags(lt, S, wd):
 
     def panel(fr):
         for i, (name, key, _) in enumerate(FLAG_ROWS):
-            a = fade(lt, word_t(S, ("small", "tiny", "circles")[i]) - 0.2, D + 1, 0.25)
+            a = fade(lt, word_t(S, ("sitting", "tiny", "looping")[i]) - 0.2, D + 1, 0.25)
             if a <= 0:
                 continue
             row = Image.new("RGBA", (980, 120), (0, 0, 0, 0))
@@ -851,14 +881,14 @@ def scene_flags(lt, S, wd):
 
 def scene_caught(lt, S, wd):
     D = S["dur"]
-    en = S["en"][0]
+    en = S["en"][-1]
     gpos = np.array((115.2, 12.0, 99.0))
     route = [(100.0, 12.0, 92.0), (109.0, 12.0, 95.5), (113.0, 12.0, 98.4)]
     gp_, gyaw, gw = walk_path(lt, route, 3.2)
     fwd = np.array((math.sin(gyaw), 0, math.cos(gyaw)))
     gface = gp_ + np.array((0, 2.6, 0))
     shots = [(0, gface + fwd * 4.4 + np.array((0.8, 0.3, 0)), gface - np.array((0, 0.4, 0)), 60),
-             (word_t(S, "trail") - 0.15, (103.8, 16.6, 97.6), (115.5, 14.2, 99.0), 68),
+             (word_t(S, "back") - 0.15, (103.8, 16.6, 97.6), (115.5, 14.2, 99.0), 68),
              (word_t(S, "story") - 0.15, (103.4, 23.0, 97.6), (119.5, 15.0, 99.0), 76)]
     cam = shot_cam(lt, shots, blend=0.45)
     boxes = W.iron_golem(GOLEM_SK, gp_, gyaw, gw * 0.6)
@@ -877,6 +907,8 @@ def scene_caught(lt, S, wd):
     seized = lt > word_t(S, "seized") - 0.1
     labels = [(np.add(gp_, (0, 3.0, 0)), "Investigator", (255, 255, 255)), (np.add(gpos, (0, 2.3, 0)), "Griefer", (255, 255, 255))]
     vals = [(np.add(gpos, (0, 2.9, 0)), [("SEIZED", (255, 85, 85))], None)] if seized else []
+    if lt > word_t(S, "charged") - 0.1:
+        vals = [(np.add(gpos, (0, 2.9, 0)), [("Charged: theft", (255, 85, 85)), ("+ money laundering", (255, 85, 85))], None)]
     ta = fade(lt, en + 0.2, D + 5, 0.4)
 
     def title(fr):
@@ -1021,7 +1053,8 @@ def build_audio(scenes, total, wd):
     for sc in scenes:
         for probe in np.arange(0, sc["dur"], 0.5):
             for e in SCENE_FN[sc["name"]](probe, sc, wd).get("sfx", []):
-                ev.add((round(e[0], 3), e[1], round(e[2], 3)))
+                if sc["t0"] - 0.05 <= e[0] < sc["t1"]:
+                    ev.add((round(e[0], 3), e[1], round(e[2], 3)))
     for t, kind, arg in sorted(ev):
         sig = dict(pop=lambda: sfx_pop(arg), coin=lambda: sfx_coin(arg), chime=sfx_chime,
                    thud=sfx_thud, whoosh=sfx_whoosh)[kind]()
