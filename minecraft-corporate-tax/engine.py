@@ -96,6 +96,15 @@ PACKS = {
         dof=0.7, bloom=0.28, vignette=0.25,
         grade=dict(contrast=1.1, sat=1.08, tint=(1.03, 1.0, 0.95)),
     ),
+    "harvest": dict(
+        # blend: Bare Bones (clean, low noise) + Autumn (warm palette) + Plastic (bevel, soft gloss)
+        title="Harvest Gloss (blend)", res=32, noise=0.14, sat=1.15, pastel=0.03, bevel=0.14, spec=0.28,
+        tints={"LEAVES": (3.1, 0.95, 0.85), "GRASS": (1.18, 0.97, 0.8)},
+        shadows=True, soft_shadow=2, ao=0.14, shading="sun", outline=False,
+        sun=(-0.5, 0.58, 0.64), sun_col=(1.12, 1.0, 0.84), amb_col=(0.6, 0.64, 0.78),
+        horizon=(0.95, 0.88, 0.78), zenith=(0.32, 0.6, 1.0), fog=(60, 95),
+        grade=dict(contrast=1.07, sat=1.12, tint=(1.03, 1.0, 0.94)),
+    ),
     "plastic": dict(
         title="Plastic (glossy)", res=32, noise=0.06, sat=1.3, pastel=0.04, bevel=0.22, spec=0.45,
         shadows=True, ao=0.14, shading="sun", outline=False,
