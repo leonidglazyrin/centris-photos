@@ -556,11 +556,18 @@ def step_card(n, name, alpha):
     return im
 
 
-def shot_cam(lt, shots, blend=0.5, push=0.16):
-    """shots: [(t_start, cam_pos, target, fov)] sorted. Eases between shots, slow push-in within a shot."""
+CLOSE_SCALE = 1.7   # pull close-ups back so subjects sit in context
+
+
+def shot_cam(lt, shots, blend=0.5, push=0.08):
+    """shots: [(t_start, cam_pos, target, fov)] sorted. Eases between shots, gentle push-in within a shot."""
     def at(i):
         t0, pos, tgt, fov = shots[i]
         pos, tgt = np.asarray(pos, float), np.asarray(tgt, float)
+        d = float(np.linalg.norm(pos - tgt))
+        if d < 9.0:
+            pos = tgt + (pos - tgt) * min(CLOSE_SCALE, 11.0 / d)
+            fov = min(fov + 6, 74)
         k = 1 - push * ss((lt - t0) / 4.0)
         return tgt + (pos - tgt) * k, tgt, fov
     i = 0
@@ -798,7 +805,7 @@ FLAG_ROWS = [("Lots of small deposits", "red", W.BANKS),
 def scene_flags(lt, S, wd):
     D = S["dur"]
     shots = [(0, (89.5, 15.0, 91.5), (85.5, 14.5, 80.5), 62),
-             (word_t(S, "red") - 0.15, (90.2, 20.8, 88.0), (85.8, 17.6, 80.4), 62),
+             (word_t(S, "red") - 0.15, (92.0, 22.5, 91.5), (85.8, 16.5, 80.4), 66),
              (word_t(S, "small") - 0.15, (94.0, 23.0, 94.0), (94.0, 15.0, 80.0), 70),
              (word_t(S, "earning") - 0.15, (109.5, 20.0, 86.8), (115.5, 17.5, 80.4), 60),
              (word_t(S, "circles") - 0.15, (98.0, 33.0, 96.0), (108.5, 14.0, 99.0), 78)]
