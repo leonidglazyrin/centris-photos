@@ -8,9 +8,9 @@ Written by Claude
 
 ## CAST
 
-**JUNO**: A lantern maker in the lakeside village of Willow Lake. Copper hair, a flower behind her ear and a sage-green apron. Practical and warm, with a lot left unsaid.
+**JUNO**: A lantern maker in the lakeside village of Willow Lake. Long dark curls, big square glasses, a grey zip hoodie over a mint tee. Practical and warm, with a lot left unsaid.
 
-**ROWAN**: A wandering cartographer with a navy coat, a red scarf and a satchel full of unfinished maps. Has never stayed anywhere long enough to call it home.
+**ROWAN**: A wandering cartographer with shoulder-length light-brown hair, a navy ball cap, dark glasses and a green tee. Has never stayed anywhere long enough to call it home.
 
 ---
 

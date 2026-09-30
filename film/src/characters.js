@@ -41,7 +41,7 @@ function paintedBox(w, h, d, faces, mats) {
   const order = ['left', 'right', 'top', 'bottom', 'front', 'back'];
   const dims = { left: [d, h], right: [d, h], top: [w, d], bottom: [w, d], front: [w, h], back: [w, h] };
   const materials = order.map((k) => {
-    const [fw, fh] = dims[k];
+    const [fw, fh] = dims[k].map((v) => Math.max(1, Math.ceil(v)));
     const cv = pix(fw, fh, (c) => faces(k, c));
     noisy(cv.getContext('2d'), fw, fh, 0.05, fw * 7 + fh * 13 + k.length);
     const m = new THREE.MeshLambertMaterial({ map: tex(cv) });
@@ -53,100 +53,117 @@ function paintedBox(w, h, d, faces, mats) {
   return mesh;
 }
 
-// ---------------- skins (original characters) ----------------
+// ---------------- skins (styled after the couple in the reference photo) ----------------
 const JUNO = {
-  skin: '#f3c9a8', blush: '#eba08f', hair: '#b9552f', hairD: '#933f21', hairL: '#d4743f', eye: '#3f8a5a', lash: '#3a2420', mouth: '#b8615a',
-  top: '#8fae7c', topD: '#76965f', apron: '#f2e7d0', belt: '#7a4f2e', leg: '#f2e7d0', boot: '#6b4028', flower: '#f59ac0',
+  skin: '#f2ccb3', blush: '#e9a693', hair: '#3a2319', hairD: '#26150e', hairL: '#5c3a27', eye: '#6d8a58', lash: '#2a1a14', mouth: '#bf7068',
+  frame: '#2a3a48', frameL: '#56707f', hood: '#dcdad6', hoodD: '#c2bfba', tee: '#a6e3da', zip: '#7a7874', chain: '#dcbb6c',
+  leg: '#3b4660', legD: '#2f3950', shoe: '#ecebe6',
 };
 const ROWAN = {
-  skin: '#c58a62', blush: '#b8705a', hair: '#2f2320', hairD: '#1f1714', hairL: '#4a372e', eye: '#4a2e1e', lash: '#20150f', mouth: '#8a4f3f',
-  top: '#2f4a74', topD: '#253b5e', button: '#dcb65a', scarf: '#c2433f', scarfD: '#9f3432', strap: '#7a4f2e', leg: '#5b5048', boot: '#3b2a20',
+  skin: '#f0c5a8', blush: '#e39e8a', hair: '#8c6641', hairD: '#6b4b2d', hairL: '#b08a5c', eye: '#5a3c28', lash: '#2a1c14', mouth: '#b56e62',
+  frame: '#232b25', frameL: '#4a574f', cap: '#27324f', capD: '#1d2640', capL: '#3d4c70',
+  top: '#2f6b3d', topD: '#265a33', script: '#efe6c8', badge: '#e8c440', leg: '#4a5670', legD: '#3d485f', shoe: '#3b2e26',
 };
 
 function headPainter(S, kind, blink) {
+  const juno = kind === 'juno';
   return (face, { put, rect, w, h }) => {
     rect(0, 0, w, h, S.skin);
-    if (face === 'top') { rect(0, 0, w, h, S.hair); for (let i = 0; i < 8; i++) put((i * 3) % 8, i, S.hairL); return; }
-    if (face === 'bottom') { rect(0, 0, w, h, S.skin); return; }
+    if (face === 'top') {
+      rect(0, 0, w, h, juno ? S.hair : S.cap);
+      for (let i = 0; i < 8; i++) put((i * 3) % 8, i, juno ? S.hairL : S.capL);
+      return;
+    }
+    if (face === 'bottom') return;
     if (face === 'back') {
       rect(0, 0, w, h, S.hair);
       for (let x = 0; x < 8; x++) put(x, (x * 5) % 8, S.hairD);
-      if (kind === 'rowan') rect(0, 7, 8, 1, S.skin);
+      if (!juno) { rect(0, 0, 8, 3, S.cap); rect(3, 2, 2, 1, S.capD); }  // cap back strap
       return;
     }
     if (face === 'left' || face === 'right') {
-      // 8 wide (depth) x 8 tall; x=0 is back for 'left'(+x) as seen from +x... paint symmetric-ish
-      rect(0, 0, 8, 3, S.hair);
-      const backSide = face === 'left' ? [0, 1, 2, 3] : [4, 5, 6, 7];
-      for (const x of backSide) rect(x, 0, 1, kind === 'juno' ? 8 : 6, S.hair);
-      for (let y = 0; y < 8; y++) put(backSide[0] + (y % 2), y, S.hairD);
-      if (kind === 'juno' && face === 'left') { put(4, 2, S.flower); put(5, 2, S.flower); put(4, 1, shadeHex(S.flower, 1.15)); put(5, 3, shadeHex(S.flower, 0.85)); }
-      const ear = face === 'left' ? 4 : 3;
-      put(ear, 4, shadeHex(S.skin, 0.9));
+      const back = face === 'left' ? [0, 1, 2, 3, 4] : [3, 4, 5, 6, 7];
+      if (juno) {
+        rect(0, 0, 8, 2, S.hair);
+        for (const x of back) rect(x, 0, 1, 8, S.hair);
+        for (let y = 0; y < 8; y++) put(back[(y * 2) % 5], y, y % 2 ? S.hairD : S.hairL);
+        // glasses arm
+        rect(face === 'left' ? 5 : 0, 3, 3, 1, S.frame);
+      } else {
+        rect(0, 0, 8, 3, S.cap); rect(0, 2, 8, 1, S.capD);
+        for (const x of back) rect(x, 3, 1, 5, S.hair);
+        put(back[2], 5, S.hairL); put(back[4], 6, S.hairD);
+        rect(face === 'left' ? 5 : 0, 3, 3, 1, S.frame);
+      }
+      put(face === 'left' ? 4 : 3, 4, juno ? S.hair : '#e5b598');
       return;
     }
     // front
-    rect(0, 0, 8, 2, S.hair);
-    if (kind === 'juno') { rect(0, 2, 1, 6, S.hair); rect(7, 2, 1, 6, S.hair); put(1, 2, S.hair); put(2, 2, S.hairL); put(6, 2, S.hair); put(5, 1, S.hairL); put(3, 1, S.hairD); }
-    else { put(0, 2, S.hair); put(7, 2, S.hair); put(2, 2, S.hair); put(5, 2, S.hairL); put(3, 0, S.hairL); put(6, 1, S.hairD); }
-    if (blink) {
-      rect(1, 4, 2, 1, S.lash); rect(5, 4, 2, 1, S.lash);
+    if (juno) {
+      // curtain bangs parted in the middle, curls framing the face
+      rect(0, 0, 8, 2, S.hair);
+      rect(0, 2, 1, 6, S.hair); rect(7, 2, 1, 6, S.hair);
+      put(1, 2, S.hair); put(2, 2, S.hairD); put(5, 2, S.hairD); put(6, 2, S.hair); put(1, 1, S.hairL); put(6, 1, S.hairL);
+      put(0, 4, S.hairL); put(7, 5, S.hairL); put(0, 7, S.hairD); put(7, 7, S.hairD);
     } else {
-      put(1, 4, '#ffffff'); put(2, 4, S.eye); put(5, 4, S.eye); put(6, 4, '#ffffff');
-      put(2, 3, S.lash); put(5, 3, S.lash);
-      if (kind === 'juno') { put(1, 3, S.lash); put(6, 3, S.lash); }
+      rect(0, 0, 8, 2, S.cap); put(3, 0, S.capL); put(4, 0, S.capL);
+      put(0, 2, S.hair); put(7, 2, S.hair); put(0, 3, S.hair); put(7, 3, S.hair); put(1, 2, S.hairL);
     }
-    put(1, 5, S.blush); put(6, 5, S.blush);
+    // glasses: dark frames around the eyes (Juno's are big and square, Rowan's rectangular)
+    rect(1, 3, 2, 1, S.frame); rect(5, 3, 2, 1, S.frame); put(3, 3, S.frameL); put(4, 3, S.frameL);
+    put(1, 5, S.frameL); put(6, 5, S.frameL);
+    if (juno) { put(1, 2, S.frame); put(6, 2, S.frame); }
+    if (blink) { rect(1, 4, 2, 1, S.lash); rect(5, 4, 2, 1, S.lash); }
+    else { put(1, 4, '#ffffff'); put(2, 4, S.eye); put(5, 4, S.eye); put(6, 4, '#ffffff'); }
+    put(1, 6, S.blush); put(6, 6, S.blush);
     put(3, 6, S.mouth); put(4, 6, S.mouth);
-    if (kind === 'rowan') { put(2, 3, S.hairD); put(5, 3, S.hairD); }
   };
 }
 
 function bodyPainter(S, kind) {
   return (face, { put, rect, w, h }) => {
     if (kind === 'juno') {
-      rect(0, 0, w, h, S.top);
+      rect(0, 0, w, h, S.hood);
       if (face === 'front') {
-        rect(1, 3, 6, 9, S.apron); rect(0, 6, 8, 1, S.belt); put(2, 3, S.apron);
-        put(3, 0, S.skin); put(4, 0, S.skin); put(3, 1, S.skin); put(4, 1, S.skin);
-        put(2, 8, shadeHex(S.apron, 0.9)); put(5, 9, shadeHex(S.apron, 0.9)); // pocket
-        put(3, 8, shadeHex(S.apron, 0.9)); put(4, 8, shadeHex(S.apron, 0.9));
+        rect(3, 0, 2, 9, S.tee);                 // open zip hoodie over a mint tee
+        put(3, 0, S.skin); put(4, 0, S.skin); put(3, 1, S.chain); put(4, 2, S.chain);
+        rect(2, 0, 1, 12, S.hoodD); rect(5, 0, 1, 12, S.hoodD);
+        rect(3, 9, 2, 3, S.zip); put(3, 10, S.hoodD);
+        put(1, 8, S.hoodD); put(6, 8, S.hoodD); rect(0, 11, 8, 1, S.hoodD);
       }
-      if (face === 'back') { rect(1, 0, 6, 6, S.hair); rect(2, 6, 4, 1, S.hairD); rect(0, 6, 8, 1, S.belt); rect(3, 6, 2, 2, S.apron); }
-      if (face === 'left' || face === 'right') { rect(0, 6, 4, 1, S.belt); }
-      for (let y = 7; y < 12; y++) put((y * 3) % w, y, S.topD);
+      if (face === 'back') { rect(1, 0, 6, 5, S.hair); rect(2, 5, 4, 1, S.hairD); rect(0, 11, 8, 1, S.hoodD); }
+      if (face === 'top') { rect(0, 0, w, h, S.hood); rect(3, 0, 2, h, S.tee); }
+      if (face === 'left' || face === 'right') rect(0, 11, w, 1, S.hoodD);
     } else {
       rect(0, 0, w, h, S.top);
       if (face === 'front') {
-        rect(0, 0, 8, 2, S.scarf); put(2, 2, S.scarf); put(2, 3, S.scarfD); put(2, 4, S.scarf);
-        rect(4, 2, 1, 10, S.topD);
-        put(5, 4, S.button); put(5, 7, S.button); put(5, 10, S.button);
-        for (let i = 0; i < 8; i++) put(i, 2 + i, S.strap);
+        rect(3, 0, 2, 1, S.skin); put(2, 0, S.topD); put(5, 0, S.topD);
+        // small badge + a cream script wordmark across the chest (generic)
+        put(5, 3, S.badge); put(6, 3, '#f4f1e6'); put(5, 4, '#f4f1e6'); put(6, 4, S.badge);
+        for (const [x, y] of [[0, 7], [1, 6], [1, 7], [2, 7], [3, 6], [3, 7], [4, 7], [5, 6], [5, 7], [6, 7], [7, 6], [2, 8], [6, 8]]) put(x, y, S.script);
       }
-      if (face === 'back') { rect(0, 0, 8, 2, S.scarf); for (let i = 0; i < 8; i++) put(7 - i, 2 + i, S.strap); }
-      if (face === 'top') rect(0, 0, w, h, S.scarf);
-      if (face === 'left' || face === 'right') { rect(0, 0, 4, 2, S.scarf); }
       rect(0, 11, w, 1, S.topD);
+      if (face === 'top') rect(0, 0, w, h, S.top);
     }
   };
 }
 function armPainter(S, kind) {
-  return (face, { put, rect, w, h }) => {
-    const sleeve = kind === 'juno' ? 5 : 10;
-    rect(0, 0, w, h, S.top);
-    rect(0, sleeve, w, h - sleeve, S.skin);
-    if (kind === 'rowan') rect(0, sleeve - 1, w, 1, S.topD);
-    if (kind === 'juno') rect(0, sleeve - 1, w, 1, S.topD);
-    if (face === 'top') rect(0, 0, w, h, S.top);
-    if (face === 'bottom') rect(0, 0, w, h, S.skin);
+  return (face, { rect, w, h }) => {
+    if (kind === 'juno') {
+      rect(0, 0, w, h, S.hood); rect(0, 9, w, 1, S.hoodD); rect(0, 10, w, 2, S.skin);  // long hoodie sleeves
+      if (face === 'bottom') rect(0, 0, w, h, S.skin);
+    } else {
+      rect(0, 0, w, h, S.skin); rect(0, 0, w, 4, S.top); rect(0, 3, w, 1, S.topD);   // t-shirt sleeves
+      if (face === 'top') rect(0, 0, w, h, S.top);
+    }
   };
 }
-function legPainter(S, kind) {
-  return (face, { put, rect, w, h }) => {
-    if (kind === 'juno') { rect(0, 0, w, h, S.top); rect(0, 5, w, 4, S.leg); rect(0, 9, w, 3, S.boot); rect(0, 4, w, 1, S.topD); }
-    else { rect(0, 0, w, h, S.leg); rect(0, 9, w, 3, S.boot); rect(0, 0, w, 3, S.top); }
-    if (face === 'bottom') rect(0, 0, w, h, S.boot);
-    if (face === 'top') rect(0, 0, w, h, kind === 'juno' ? S.top : S.leg);
+function legPainter(S) {
+  return (face, { rect, put, w, h }) => {
+    rect(0, 0, w, h, S.leg);
+    put(1, 4, S.legD); put(2, 8, S.legD);
+    rect(0, 10, w, 2, S.shoe);
+    if (face === 'bottom') rect(0, 0, w, h, S.shoe);
   };
 }
 
@@ -164,13 +181,21 @@ export class Character {
     noisy(blinkCv.getContext('2d'), 8, 8, 0.05, 8 * 7 + 8 * 13 + 5);
     this.faceOpen = headMats.front.map; this.faceBlink = tex(blinkCv); this.faceMat = headMats.front;
     if (kind === 'juno') {
-      // long hair falling down the back
-      const hairBack = paintedBox(8, 7, 1, (f, c) => { c.rect(0, 0, c.w, c.h, S.hair); for (let i = 0; i < 8; i++) c.put(i, (i * 3) % 7, S.hairD); c.put(3, 6, S.hairL); });
-      hairBack.position.set(0, -1.5 * PX, -4.5 * PX); this.neck.add(hairBack);
+      // big curly hair: volume on top, curls at the sides, falling past the shoulders at the back
+      const curl = (f, c) => { c.rect(0, 0, c.w, c.h, S.hair); for (let i = 0; i < c.w * c.h; i += 3) c.put(i % c.w, Math.floor(i / c.w), (i * 7) % 5 < 2 ? S.hairD : (i % 4 === 0 ? S.hairL : S.hair)); };
+      const back = paintedBox(9, 9, 2, curl); back.position.set(0, -1.5 * PX, -4.6 * PX); this.neck.add(back);
+      for (const side of [-1, 1]) {
+        const sideCurl = paintedBox(1, 7, 3.5, curl); sideCurl.position.set(side * 4.45 * PX, 1.2 * PX, -2.4 * PX); this.neck.add(sideCurl);
+      }
+      const top = paintedBox(8.6, 1, 8.2, curl); top.position.set(0, 8.4 * PX, -0.5 * PX); this.neck.add(top);
     } else {
-      // tousled hair on top
-      const tuft = paintedBox(8, 1, 8, (f, c) => { c.rect(0, 0, c.w, c.h, S.hair); for (let i = 0; i < 8; i++) c.put(i, (i * 5) % 8, S.hairL); });
-      tuft.position.set(0, 8.5 * PX, -0.2 * PX); tuft.scale.set(1.04, 1, 1.04); this.neck.add(tuft);
+      // navy ball cap with a curved brim, hair poking out at the back
+      const cap = paintedBox(8.6, 2.2, 8.6, (f, c) => { c.rect(0, 0, c.w, c.h, S.cap); if (f === 'top') { c.put(4, 4, S.capD); } else c.rect(0, c.h - 1, c.w, 1, S.capD); });
+      cap.position.set(0, 7.3 * PX, 0); this.neck.add(cap);
+      const brim = paintedBox(8, 0.7, 4, (f, c) => { c.rect(0, 0, c.w, c.h, S.capD); if (f === 'top') c.rect(1, 0, c.w - 2, c.h - 1, S.cap); });
+      brim.position.set(0, 6.4 * PX, 5.6 * PX); brim.rotation.x = 0.12; this.neck.add(brim);
+      const hairBack = paintedBox(8, 3, 1, (f, c) => { c.rect(0, 0, c.w, c.h, S.hair); c.put(2, 1, S.hairL); c.put(5, 2, S.hairD); });
+      hairBack.position.set(0, 0.2 * PX, -4.4 * PX); this.neck.add(hairBack);
     }
     const mkArm = (side) => {
       const g = new THREE.Group(); g.position.set(side * 6 * PX, 10 * PX, 0); this.hips.add(g);
@@ -186,11 +211,6 @@ export class Character {
       return g;
     };
     this.legL = mkLeg(1); this.legR = mkLeg(-1);
-    if (kind === 'rowan') {
-      // satchel on the hip
-      const bag = paintedBox(5, 4, 2, (f, c) => { c.rect(0, 0, c.w, c.h, '#8a5a34'); c.rect(0, 0, c.w, 1, '#6d4527'); c.put(2, 2, '#dcb65a'); });
-      bag.position.set(-4.5 * PX, 1 * PX, 1.8 * PX); bag.rotation.y = 0.35; this.hips.add(bag);
-    }
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 
