@@ -47,16 +47,19 @@ FFMPEG = ffmpeg_exe()
 
 # ============================================================== narration
 SCENES = [
-    ("intro", ["What if the government taxed companies on gains they haven't cashed in yet?"]),
-    ("assets", ["Meet Blockworks. It owns a factory, a stockpile of iron, and a vault of fifty diamond blocks.",
-                "This year, diamond prices doubled. On paper, the company just gained a thousand emeralds."]),
-    ("bill", ["But it didn't sell anything, so it has zero new emeralds.",
-              "The tax bill comes anyway: twenty percent. Two hundred emeralds, due now."]),
-    ("sell", ["To pay, Blockworks has to sell things it wanted to keep: diamonds, iron, even part of its factory."]),
-    ("cycle", ["Next year, prices rise again. New paper gain, new tax bill, more selling.",
-               "It turns into a loop."]),
-    ("cost", ["Each round, the company shrinks. It makes less, hires less, and invests less, just to pay tax on money it never received."]),
-    ("outro", ["The better way? Tax the gain when the asset is actually sold."]),
+    ("intro", ["What if companies had to pay tax on gains they haven't cashed in yet? Here's why that gets messy, fast."]),
+    ("business", ["Meet Blockworks. It makes diamond tools in its factory, and sells them at the market.",
+                  "This year it sold 300 emeralds of tools, paid its workers and materials, and made 100 emeralds of profit.",
+                  "It pays normal tax on that profit, and keeps 80 emeralds of cash."]),
+    ("vault", ["It also keeps a vault of 50 diamond blocks, the raw material for next year's tools.",
+               "This year, diamond prices doubled. On paper, the vault went from 1,000 emeralds to 2,000."]),
+    ("bill", ["Under an unrealized gains tax, that 1,000 emerald paper gain gets taxed too: 20 percent, so 200 emeralds.",
+              "But the gain isn't cash. Blockworks only has 80 emeralds, and those were meant for wages and new equipment."]),
+    ("sell", ["So it has to sell things it needs: diamonds, iron, even part of its factory, just to cover the missing 120."]),
+    ("cycle", ["Next year, with fewer materials and a smaller factory, it makes fewer tools and earns less.",
+               "If diamond prices rise again, there's a new paper gain, a new tax bill bigger than its cash, and more selling."]),
+    ("cost", ["Year after year, the company shrinks: less production, fewer jobs, less investment, to pay tax on value it never actually received."]),
+    ("outro", ["Today, companies pay tax on a gain when they sell the asset, because that's when the money is real."]),
 ]
 LEAD, GAP, SGAP, TAIL = 0.6, 0.25, 0.5, 2.0
 
@@ -530,9 +533,9 @@ def block_box(bid, pos, size=0.32, spin=0.0):
 # Sales: (block list, block id, emerald value each)
 def sales_round(round_):
     if round_ == 1:
-        return ([(p, E.DIAMOND, 40) for p in W.VAULT[:3]] + [(p, E.IRON, 10) for p in W.IRON_PILE[:4]]
+        return ([(p, E.DIAMOND, 40) for p in W.VAULT[:1]] + [(p, E.IRON, 10) for p in W.IRON_PILE[:4]]
                 + [(p, E.COBBLE, 8) for p in W.CHIMNEY[:5]])
-    return ([(p, E.DIAMOND, 50) for p in W.VAULT[3:6]] + [(p, E.IRON, 10) for p in W.IRON_PILE[4:7]]
+    return ([(p, E.DIAMOND, 50) for p in W.VAULT[1:3]] + [(p, E.IRON, 10) for p in W.IRON_PILE[4:7]]
             + [(p, E.SMOOTH, 8) for p in W.FACTORY_ROOF_SALE[:6]])
 
 
@@ -599,17 +602,109 @@ def people(lt, tax_pos=None, tax_yaw=None, tax_walk=0.0, ceo_arms=None, buyer=Tr
 
 
 # ============================================================== scenes
+PICK = sprite([
+    "...######.......",
+    "..#aaaaaa##.....",
+    "...##bbbbaa#....",
+    ".....##cc#ba#...",
+    ".......#dc#ba#..",
+    "......#dc#.#b#..",
+    ".....#dc#..#b#..",
+    "....#dc#....#...",
+    "...#dc#.........",
+    "..#dc#..........",
+    ".#dc#...........",
+    "#dc#............",
+    "##..............",
+], {"#": (20, 20, 20), "a": (170, 255, 250), "b": (60, 200, 190), "c": (90, 60, 30), "d": (130, 90, 45)})
+
+FACTORY_OUT = (105.4, 13.6, 96.0)
+HQ_DOOR = (100.0, 13.4, 103.2)
+WORKERS = [(104.3, 12.0, 94.2), (104.4, 12.0, 97.8), (103.9, 12.0, 96.0)]
+
+
+def word_t(S, prefix, k=0):
+    """Local time of the k-th spoken word starting with prefix."""
+    hits = [w[0] for s in S["sents"] for w in s["words"] if w[2].lower().strip(",.:?!'\"").startswith(prefix)]
+    return hits[min(k, len(hits) - 1)] - S["t0"] if hits else 0.0
+
+
+def shot_cam(lt, shots, blend=0.5, push=0.06):
+    """shots: [(t_start, cam_pos, target, fov)]. Eases between shots, gentle push-in within a shot."""
+    shots = sorted(shots, key=lambda x: x[0])
+
+    def at(i):
+        t0, pos, tgt, fov = shots[i]
+        pos, tgt = np.asarray(pos, float), np.asarray(tgt, float)
+        k = 1 - push * ss((lt - t0) / 4.0)
+        return tgt + (pos - tgt) * k, tgt, fov
+    i = 0
+    while i + 1 < len(shots) and lt >= shots[i + 1][0]:
+        i += 1
+    pos, tgt, fov = at(i)
+    if i > 0 and lt - shots[i][0] < blend:
+        k = ss((lt - shots[i][0]) / blend)
+        p0, t0_, f0 = at(i - 1)
+        pos, tgt, fov = lerp(p0, pos, k), lerp(t0_, tgt, k), f0 * (1 - k) + fov * k
+    return E.Camera(pos, tgt, fov)
+
+
+def books_panel(title, rows, alpha):
+    """rows: [(label, value, color)] -> MC tooltip-style ledger."""
+    h = 110 + 78 * len(rows)
+    p = tooltip(860, h)
+    p.alpha_composite(ptext(title, (255, 226, 60), 4), (40, 26))
+    for i, (lab, val, col) in enumerate(rows):
+        y = 100 + i * 78
+        p.alpha_composite(ptext(lab, (220, 220, 220), 4), (40, y))
+        v = ptext(val, col, 4)
+        p.alpha_composite(v, (820 - v.width, y))
+    if alpha < 1:
+        a = np.array(p.getchannel("A"), np.float32) * alpha
+        p.putalpha(Image.fromarray(a.astype(np.uint8)))
+    return p
+
+
+def arc(a, b, k, h=2.5):
+    return lerp(a, b, k) + np.array((0, h * math.sin(math.pi * k), 0))
+
+
+def trade_flow(lt, t_start, t_end, every=0.45):
+    """Tools fly factory -> market stall, emeralds fly stall -> HQ."""
+    spr = []
+    n = int((min(lt, t_end) - t_start) / every) + 1 if lt > t_start else 0
+    for i in range(max(0, n - 6), n):
+        ti = t_start + i * every
+        k = (lt - ti) / 1.6
+        if 0 <= k < 1:
+            spr.append((arc(FACTORY_OUT, STALL_TOP, k, 3.5), 0.55, PICK))
+        k2 = (lt - ti - 1.6) / 1.4
+        if 0 <= k2 < 1:
+            spr.append((arc(np.add(STALL_TOP, (0, 0.4, 0)), HQ_DOOR, k2, 3.0), 0.45, EMERALD))
+    return spr
+
+
+def workers(lt, busy=True):
+    b, blobs = [], []
+    for i, p in enumerate(WORKERS):
+        arm = (-1.2 + 0.5 * math.sin(lt * 7 + i * 2)) if busy else None
+        b += W.player(WORKER_SK, p, math.pi / 2, arm_r=arm)
+        blobs.append((p[0], p[2], 0.6))
+    return b, blobs
+
+
 def scene_intro(lt, S, wd):
     D = S["dur"]
     cam = path(lt, [(0, (72, 36, 70), (96, 16, 100), 78), (D, (86, 25, 77), (95, 16, 100), 76)])
     boxes, blobs = people(lt)
+    wb, wbl = workers(lt)
     a = fade(lt, 0.3, D - 0.15, 0.35)
 
     def title(fr):
         put(fr, ptext("TAXING COMPANIES", (235, 235, 235), 7), OW / 2, 330, alpha=a)
         put(fr, ptext("ON UNREALIZED", (235, 235, 235), 7), OW / 2, 460, alpha=a)
         put(fr, ptext("GAINS", (255, 226, 60), 11), OW / 2, 620, alpha=a)
-    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, overlays=[title],
+    return dict(cam=cam, boxes=boxes + wb, blobs=blobs + wbl, grid=wd.base, overlays=[title],
                 labels=[((100, 30.6, 104), "BLOCKWORKS INC.", (255, 215, 60))])
 
 
@@ -617,95 +712,131 @@ def inv_counts(dia, iron, em=0, flash=0.0):
     return [(block_icon(E.DIAMOND), dia, 0.0), (block_icon(E.IRON), iron, 0.0), (EMERALD, em, flash)]
 
 
-def scene_assets(lt, S, wd):
-    s0, s1 = S["st"]
+def scene_business(lt, S, wd):
     D = S["dur"]
-    cam = path(lt, [(0, (97.5, 22, 80), (95, 14, 98), 78), (s1 - 0.3, (96.5, 20.5, 82), (93, 14, 98), 78),
-                    (s1 + 1.2, (89.5, 16.5, 90.8), (84.5, 13.2, 99.5), 74), (D, (89.0, 16.3, 91.3), (84.5, 13.2, 99.5), 72)])
+    t_fac, t_sells, t_sold = word_t(S, "factory"), word_t(S, "sells"), word_t(S, "sold")
+    t_work, t_profit, t_tax, t_keeps = word_t(S, "workers"), word_t(S, "profit"), word_t(S, "tax"), word_t(S, "keeps")
+    shots = [(0, (97.5, 22, 80), (95, 14, 98), 78),
+             (t_fac - 0.15, (99.0, 16.8, 90.0), (107, 14.2, 96), 70),
+             (t_sells - 0.15, (85.0, 16.8, 83.5), (78.8, 13.5, 90.5), 70),
+             (t_sold - 0.15, (94.0, 27.0, 78.0), (93.0, 13.0, 95.0), 80),
+             (t_keeps - 0.15, (93.0, 16.8, 89.5), (96.5, 15.5, 102.0), 72)]
+    cam = shot_cam(lt, shots)
     boxes, blobs = people(lt)
-    labels = [((100, 30.6, 104), "BLOCKWORKS INC.", (255, 215, 60))]
-    order = [(0.9, (84.5, 15.2, 99.5), "Diamond vault"), (1.9, (88.5, 15.0, 88.5), "Iron stockpile"),
-             (2.9, (111, 20.5, 96), "Factory")]
+    wb, wbl = workers(lt)
+    spr = trade_flow(lt, t_sells, D)
+    rows = []
+    if lt > t_sold:
+        rows.append(("Tool sales", "+300", (85, 255, 85)))
+    if lt > t_work:
+        rows.append(("Wages + materials", "-200", (255, 120, 120)))
+    if lt > t_profit:
+        rows.append(("Profit", "100", (255, 255, 255)))
+    if lt > t_tax:
+        rows.append(("Normal profit tax", "-20", (255, 120, 120)))
+    if lt > t_keeps:
+        rows.append(("Cash left", "80", (85, 255, 85)))
+    pa = fade(lt, t_sold - 0.1, D + 1, 0.25)
+
+    def ledger(fr):
+        if rows and pa > 0:
+            put(fr, books_panel("BLOCKWORKS: YEAR 1", rows, pa), OW / 2, 470)
     vals = []
-    for tt, p, txt in order:
-        if s0 + tt <= lt < s1 + 0.2:
-            vals.append((p, [(txt, (255, 255, 255))], None))
-    parts = []
-    if lt >= s1 + 0.2:
-        k = ss((lt - s1 - 0.9) / 1.2)
+    if t_fac < lt < t_sells:
+        vals.append(((108, 19.6, 96), [("Makes diamond tools", (255, 255, 255))], None))
+    if t_sells < lt < t_sold:
+        vals.append(((78.5, 16.8, 90.5), [("Sells them here", (255, 255, 255))], None))
+    cash = int(80 * ss((lt - t_keeps) / 0.8))
+    sfx = [(S["t0"] + t_sells + 1.6 + i * 0.45, "coin", 1.0 + 0.03 * (i % 6)) for i in range(int((D - t_sells - 1.6) / 0.45))]
+    return dict(cam=cam, boxes=boxes + wb, blobs=blobs + wbl, grid=wd.base, sprites=spr, overlays=[ledger], values=vals,
+                labels=[((100, 30.6, 104), "BLOCKWORKS INC.", (255, 215, 60))],
+                inv=inv_counts(50, 18, cash) if lt > t_keeps - 0.3 else None, sfx=sfx)
+
+
+def scene_vault(lt, S, wd):
+    D = S["dur"]
+    t_dbl, t_paper = word_t(S, "doubled"), word_t(S, "paper")
+    shots = [(0, (90.0, 17.0, 90.0), (84.5, 13.2, 99.5), 72), (t_dbl - 0.2, (89.0, 16.2, 91.2), (84.5, 13.4, 99.5), 70)]
+    cam = shot_cam(lt, shots)
+    boxes, blobs = people(lt)
+    vals, parts = [], []
+    if lt < t_dbl - 0.2:
+        vals.append(((84.5, 15.4, 99.5), [("Raw material for next year", (255, 255, 255))], None))
+    else:
+        k = ss((lt - t_dbl) / 1.4)
         price = int(round(1000 + 1000 * k, -1))
-        vals.append(((84.5, 15.4, 99.5), [(f"Diamonds: {price:,}", (85, 255, 255) if k < 1 else (85, 255, 85))], EMERALD))
-        if 0 < k:
-            parts += sparkles(lt, 3, (82, 14, 97), (87, 16.5, 102))
-    ov = []
-    pa = fade(lt, s1 + 2.2, D + 1, 0.2)
+        vals.append(((84.5, 15.4, 99.5), [(f"Vault value: {price:,}", (85, 255, 255) if k < 1 else (85, 255, 85))], EMERALD))
+        parts += sparkles(lt, 3, (82, 14, 97), (87, 16.5, 102))
+    pa = fade(lt, t_paper - 0.1, D + 1, 0.2)
 
     def panel(fr):
         if pa <= 0:
             return
-        p = tooltip(760, 170)
+        p = tooltip(860, 230)
         p.alpha_composite(ptext("Unrealized gain", (200, 200, 200), 4), (40, 22))
         p.alpha_composite(ptext("+1,000 emeralds", (85, 255, 85), 5), (40, 80))
-        put(fr, p, OW / 2, 360, alpha=pa)
-    ov.append(panel)
-    sfx = [(S["t0"] + s1 + 0.9, "chime", 1)]
-    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, labels=labels, values=vals, particles=parts,
-                overlays=ov, inv=inv_counts(50, 18) if lt > s0 + 0.4 else None, sfx=sfx)
+        p.alpha_composite(ptext("on paper: nothing was sold", (255, 226, 60), 3), (40, 165))
+        put(fr, p, OW / 2, 400, alpha=pa)
+    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, values=vals, particles=parts, overlays=[panel],
+                inv=inv_counts(50, 18, 80), sfx=[(S["t0"] + t_dbl, "chime", 1)])
 
 
 def scene_bill(lt, S, wd):
-    s0, s1 = S["st"]
     D = S["dur"]
+    t_200, t_only = word_t(S, "200"), word_t(S, "only")
     arrive = path_len(TAX_ROUTE) / 3.0
-    t_walk0 = s1 - arrive + 0.6
+    t_walk0 = max(0.0, t_200 - arrive + 0.3)
     tp, tyaw, twalk = walk_path(max(0.0, lt - t_walk0), TAX_ROUTE)
     if lt >= t_walk0 + arrive:
         tyaw = yaw_to(TAX_MEET, CEO_POS)
-    cam = path(lt, [(0, (94.2, 16.2, 88.2), (88.5, 13.4, 96), 72), (s1, (93.8, 15.8, 88.6), (88.0, 13.4, 95.5), 72),
-                    (D, (93.4, 15.6, 89.0), (88.0, 13.4, 95.5), 70)])
-    shrug = -0.9 + 0.3 * math.sin(lt * 6) if s0 + 0.5 < lt < s1 - 0.3 else None
+    cam = path(lt, [(0, (94.2, 16.2, 88.2), (88.5, 13.4, 96), 72), (D, (93.4, 15.6, 89.0), (88.0, 13.4, 95.5), 70)])
+    shrug = -0.9 + 0.3 * math.sin(lt * 6) if lt > t_only else None
     boxes, blobs = people(lt, tp, tyaw, twalk if lt < t_walk0 + arrive else 0.0, shrug)
     vals = []
     if lt >= t_walk0 + arrive - 0.2:
         vals.append((np.add(tp, (0, 3.0, 0)), [("TAX BILL: 200", (255, 85, 85)), ("20% of +1,000", (230, 230, 230))], EMERALD))
     labels = [(np.add(CEO_POS, (0, 2.3, 0)), "Blockworks_CEO", (255, 255, 255)),
               (np.add(tp, (0, 2.45, 0)), "Tax_Collector", (255, 255, 255))]
-    fl = 0.5 + 0.5 * math.sin(lt * 10) if s0 + 1.0 < lt < s1 else 0.0
-    sfx = [(S["t0"] + t_walk0 + arrive, "thud", 1)]
-    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, values=vals, labels=labels,
-                inv=inv_counts(50, 18, 0, fl), sfx=sfx)
+    fl = 0.5 + 0.5 * math.sin(lt * 10) if lt > t_only else 0.0
+    rows = [("Tax bill", "200", (255, 120, 120))]
+    if lt > t_only:
+        rows += [("Cash on hand", "80", (255, 255, 255)), ("Missing", "120", (255, 85, 85))]
+    pa = fade(lt, t_200 - 0.1, D + 1, 0.25)
 
-
-SALE_CAM = [(68.0, 22.5, 93.0), (99, 12.5, 94.5), 74]
+    def panel(fr):
+        if pa > 0:
+            put(fr, books_panel("CAN IT PAY?", rows, pa), OW / 2, 420)
+    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=wd.base, values=vals, labels=labels, overlays=[panel],
+                inv=inv_counts(50, 18, 80, fl), sfx=[(S["t0"] + t_walk0 + arrive, "thud", 1)])
 
 
 def scene_sell(lt, S, wd):
-    s0 = S["st"][0]
     D = S["dur"]
+    t_dia, t_fac = word_t(S, "diamonds"), word_t(S, "factory")
     cam = path(lt, [(0, (90, 26, 80), (88, 12, 95), 80), (1.2, (84.5, 28, 77), (89, 11.5, 93), 82),
                     (D, (84.5, 28.5, 76.5), (89, 11.5, 93), 82)])
-    g, sb, spr, parts, paid, sold, sfx = run_sales(lt, s0 + 0.9, max(3.5, S["en"][0] - 1.4), SALE1, wd.base, 100)
+    g, sb, spr, parts, paid, sold, sfx = run_sales(lt, t_dia, max(2.5, t_fac + 0.8 - t_dia), SALE1, wd.base, 100)
     boxes, blobs = people(lt, np.array(TAX_MEET), yaw_to(TAX_MEET, BUYER_POS))
     boxes += sb
     dia = 50 - sum(1 for b in sold if b == E.DIAMOND)
     iron = 18 - sum(1 for b in sold if b == E.IRON)
-    vals = [(np.add(TAX_MEET, (0, 3.0, 0)), [(f"Paid: {paid}/200", (85, 255, 85) if paid >= 200 else (255, 255, 255))], EMERALD)]
+    total = 80 + paid
+    vals = [(np.add(TAX_MEET, (0, 3.0, 0)), [(f"Paid: {total}/200", (85, 255, 85) if total >= 200 else (255, 255, 255))], EMERALD)]
     labels = [(np.add(BUYER_POS, (0, 2.5, 0)), "Buyer", (255, 255, 255))]
     return dict(cam=cam, boxes=boxes, blobs=blobs, grid=g, values=vals, labels=labels, particles=parts,
-                sprites=spr, inv=inv_counts(dia, iron), sfx=[(S["t0"] + a, k, p) for a, k, p in sfx])
+                sprites=[(q, s_, EMERALD) for q, s_ in spr], inv=inv_counts(dia, iron, 0), sfx=[(S["t0"] + a, k, p) for a, k, p in sfx])
 
 
-CYCLE_STEPS = ["Prices rise", "Paper gain", "Tax bill", "Sell assets"]
+CYCLE_STEPS = ["Prices rise", "Tax bill > cash", "Sell assets", "Less revenue"]
 
 
 def cycle_diagram(active, alpha):
-    W_, H_ = 900, 760
+    W_, H_ = 940, 760
     im = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, W_ - 1, H_ - 1], 40, fill=(12, 12, 20, 205))
     cx, cy, r = W_ / 2, H_ / 2 + 20, 230
     pos = [(cx, cy - r), (cx + r * 1.25, cy), (cx, cy + r), (cx - r * 1.25, cy)]
-    # arrows along the circle
     for i in range(4):
         a0 = -math.pi / 2 + i * math.pi / 2 + 0.42
         a1 = a0 + math.pi / 2 - 0.84
@@ -718,11 +849,12 @@ def cycle_diagram(active, alpha):
         d.polygon([(ex + 26 * math.cos(ang), ey + 26 * math.sin(ang)),
                    (ex + 20 * math.cos(ang + 2.3), ey + 20 * math.sin(ang + 2.3)),
                    (ex + 20 * math.cos(ang - 2.3), ey + 20 * math.sin(ang - 2.3))], fill=col)
-    f = cfont(44, "Bold")
+    f = cfont(40, "Bold")
     for i, (x, y) in enumerate(pos):
         on = i == active
         tw = f.getlength(CYCLE_STEPS[i])
-        d.rounded_rectangle([x - tw / 2 - 26, y - 44, x + tw / 2 + 26, y + 44], 22,
+        x = min(max(x, tw / 2 + 36), W_ - tw / 2 - 36)
+        d.rounded_rectangle([x - tw / 2 - 22, y - 42, x + tw / 2 + 22, y + 42], 22,
                             fill=(255, 226, 60, 255) if on else (40, 40, 60, 255), outline=(255, 255, 255, 255), width=4)
         d.text((x, y), CYCLE_STEPS[i], font=f, fill=(20, 20, 20) if on else (255, 255, 255), anchor="mm")
     t = ctext("THE LOOP", 50, stroke=0)
@@ -734,56 +866,68 @@ def cycle_diagram(active, alpha):
 
 
 def scene_cycle(lt, S, wd):
-    s0, s1 = S["st"]
     D = S["dur"]
-    ang = 0.25 * lt
+    t_rise, t_bill, t_sell = word_t(S, "rise"), word_t(S, "bill"), word_t(S, "selling")
+    ang = 0.2 * lt
     c = np.array((92.0, 13.0, 96.0))
     cam = E.Camera(c + np.array((-14 * math.sin(0.6 + ang), 17, -18 * math.cos(0.6 + ang))), c, 78)
-    g, sb, spr, parts, paid, sold, sfx = run_sales(lt, s0 + 2.4, 2.8, SALE2, wd.after1, 300)
+    g, sb, spr, parts, paid, sold, sfx = run_sales(lt, t_sell, 2.6, SALE2, wd.after1, 300)
     boxes, blobs = people(lt, np.array(TAX_MEET), yaw_to(TAX_MEET, BUYER_POS))
-    boxes += sb
-    if s0 < lt < s0 + 2.4:
+    wb, wbl = workers(lt)
+    boxes += sb + wb
+    blobs += wbl
+    spr = [(q, s_, EMERALD) for q, s_ in spr] + trade_flow(lt, 0.3, t_rise, every=0.8)
+    if t_rise < lt < t_sell:
         parts += sparkles(lt, 7, (82, 13, 97), (87, 15.5, 102))
-    dia = 47 - sum(1 for b in sold if b == E.DIAMOND)
+    dia = 49 - sum(1 for b in sold if b == E.DIAMOND)
     iron = 14 - sum(1 for b in sold if b == E.IRON)
     vals = []
-    if s0 + 0.2 < lt < s0 + 2.4:
-        vals.append(((84.5, 15.2, 99.5), [("Year 2: prices up again", (85, 255, 255))], None))
-    if lt > s0 + 1.2:
+    if lt > t_bill:
         vals.append((np.add(TAX_MEET, (0, 3.0, 0)), [("NEW TAX BILL", (255, 85, 85))], None))
-    # the loop diagram: step highlighted in sync with narration
-    step = min(3, int(max(0.0, lt - s0) / 0.9)) if lt < s1 else int((lt - s1) / 0.45) % 4
-    da = fade(lt, s0 + 0.1, D + 1, 0.3)
+    if lt < t_rise:
+        step = 3
+    elif lt < t_bill:
+        step = 0
+    elif lt < t_sell:
+        step = 1
+    elif lt < t_sell + 1.2:
+        step = 2
+    else:
+        step = 3 + int((lt - t_sell - 1.2) / 0.5) % 4
+        step %= 4
+    da = fade(lt, 0.1, D + 1, 0.3)
+    ra = fade(lt, 0.3, t_rise, 0.25)
 
     def diagram(fr):
-        if da > 0:
-            put(fr, cycle_diagram(step, da), OW / 2, 520)
+        if ra > 0:
+            put(fr, books_panel("YEAR 2", [("Tool sales", "240 (was 300)", (255, 120, 120))], ra), OW / 2, 380)
+        if lt > t_rise - 0.3 and da > 0:
+            put(fr, cycle_diagram(step, min(da, fade(lt, t_rise - 0.3, D + 1, 0.3))), OW / 2, 520)
     return dict(cam=cam, boxes=boxes, blobs=blobs, grid=g, values=vals, particles=parts, sprites=spr,
-                overlays=[diagram], inv=inv_counts(dia, iron), sfx=[(S["t0"] + a, k, p) for a, k, p in sfx])
+                overlays=[diagram], inv=inv_counts(dia, iron, 0), sfx=[(S["t0"] + a, k, p) for a, k, p in sfx])
 
 
 def scene_cost(lt, S, wd):
-    s0 = S["st"][0]
     D = S["dur"]
     cam = path(lt, [(0, (98.5, 17.5, 86.0), (109, 15, 96), 74), (D, (97.0, 18.5, 84.5), (109, 15, 96), 76)])
     boxes, blobs = [], []
-    starts = [(105.0, 12.0, 91.0), (104.2, 12.0, 93.2), (103.6, 12.0, 90.0)]
-    for i, st in enumerate(starts):
-        tw = lt - (s0 + 1.0 + i * 0.6)
+    t_jobs = word_t(S, "jobs")
+    for i, st in enumerate(WORKERS):
+        tw = lt - (t_jobs - 0.3 + i * 0.5)
         end = (st[0] - 16, 12.0, st[2] - 10)
         if tw > 0:
             p, yw, ph = walk_path(tw, [st, end], 2.6)
         else:
-            p, yw, ph = np.array(st), yaw_to(st, CEO_POS), 0.0
+            p, yw, ph = np.array(st), math.pi / 2, 0.0
         boxes += W.player(WORKER_SK, p, yw, walk=ph)
         blobs.append((p[0], p[2], 0.6))
-    g = wd.after2 if lt < s0 + 0.8 else wd.dark
-    ov = []
-    items = [("Production", 0.3), ("Jobs", 1.6), ("Investment", 2.9)]
+    t_prod = word_t(S, "production")
+    g = wd.after2 if lt < t_prod else wd.dark
+    items = [("Production", "production"), ("Jobs", "jobs"), ("Investment", "investment")]
 
     def panel(fr):
-        for i, (name, t0) in enumerate(items):
-            a = fade(lt, s0 + t0, D + 1, 0.25)
+        for i, (name, key) in enumerate(items):
+            a = fade(lt, word_t(S, key) - 0.15, D + 1, 0.25)
             if a <= 0:
                 continue
             row = Image.new("RGBA", (720, 120), (0, 0, 0, 0))
@@ -792,10 +936,9 @@ def scene_cost(lt, S, wd):
             d.polygon([(620, 38), (680, 38), (650, 88)], fill=(255, 80, 80))
             row.alpha_composite(ctext(name, 60, stroke=0), (40, 22))
             put(fr, row, OW / 2, 330 + i * 150, alpha=a)
-    ov.append(panel)
-    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=g, overlays=ov, inv=inv_counts(44, 11),
-                labels=[((105.8, 16.8, 96), "Factory: half closed", (255, 120, 120))] if lt > s0 + 0.8 else [],
-                sfx=[(S["t0"] + s0 + 0.8, "thud", 1)])
+    return dict(cam=cam, boxes=boxes, blobs=blobs, grid=g, overlays=[panel], inv=inv_counts(47, 11, 0),
+                labels=[((105.8, 16.8, 96), "Factory: half closed", (255, 120, 120))] if lt > t_prod else [],
+                sfx=[(S["t0"] + t_prod, "thud", 1)])
 
 
 def scene_outro(lt, S, wd):
@@ -815,8 +958,9 @@ def scene_outro(lt, S, wd):
                 sfx=[(S["t0"] + 0.35, "chime", 1)])
 
 
-SCENE_FN = dict(intro=scene_intro, assets=scene_assets, bill=scene_bill, sell=scene_sell,
+SCENE_FN = dict(intro=scene_intro, business=scene_business, vault=scene_vault, bill=scene_bill, sell=scene_sell,
                 cycle=scene_cycle, cost=scene_cost, outro=scene_outro)
+
 
 
 # ============================================================== composition
@@ -849,13 +993,13 @@ def compose(t, scenes, wd, chunks):
     draw_particles(img, depth, cam, r.get("particles", []))
     img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
     fr = Image.fromarray(np.repeat(np.repeat(img, 3, 0), 3, 1), "RGB")
-    for p, size in r.get("sprites", []):
+    for p, size, spr_img in r.get("sprites", []):
         pr = cam.project(p, OW, OH)
         if pr is None:
             continue
         px = int(size / (pr[2] * cam.th) * OH / 2)
         if px >= 6:
-            put(fr, EMERALD.resize((px, px * 13 // 16), Image.NEAREST), pr[0], pr[1])
+            put(fr, spr_img.resize((px, px * spr_img.height // spr_img.width), Image.NEAREST), pr[0], pr[1])
     for p, name, col in r.get("labels", []):
         pr = cam.project(p, OW, OH)
         if pr is None:
@@ -935,7 +1079,8 @@ def build_audio(scenes, total, wd):
     for sc in scenes:
         for probe in np.arange(0, sc["dur"], 0.5):
             for e in SCENE_FN[sc["name"]](probe, sc, wd).get("sfx", []):
-                ev.add((round(e[0], 3), e[1], round(e[2], 3)))
+                if sc["t0"] - 0.05 <= e[0] < sc["t1"]:
+                    ev.add((round(e[0], 3), e[1], round(e[2], 3)))
     for t, kind, arg in sorted(ev):
         sig = dict(pop=lambda: sfx_pop(arg), coin=lambda: sfx_coin(arg), chime=sfx_chime,
                    thud=sfx_thud, whoosh=sfx_whoosh)[kind]()

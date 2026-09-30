@@ -1,8 +1,14 @@
 # Taxing corporations on unrealized gains (vertical, Minecraft-style)
 
-`corporate_unrealized_gains_minecraft.mp4` is a ~50 second vertical video (1080×2340, the iPhone 15 Pro's 19.5:9 aspect).
+`corporate_unrealized_gains_minecraft.mp4` is a ~82 second vertical video (1080×2340, the iPhone 15 Pro's 19.5:9 aspect).
 
-**Story:** Blockworks Inc. owns a factory, an iron stockpile and 50 diamond blocks. Diamond prices double, which creates a +1,000 emerald gain on paper, but the company has 0 new emeralds. It gets a 200-emerald tax bill and has to sell diamonds, iron and part of its factory to a buyer. The next year prices rise again, a new bill arrives, and it sells more. The loop shrinks production, jobs and investment. Outro: tax gains when the asset is actually sold.
+**Story** (a real, profitable business that still can't pay):
+1. Blockworks makes diamond tools and sells them at the market. Year 1: 300 emeralds of sales, minus 200 for wages and materials, is 100 of profit. It pays normal profit tax (-20) and keeps 80 in cash.
+2. Its vault of 50 diamond blocks (next year's raw material) doubles in price, from 1,000 to 2,000. That's a +1,000 gain on paper, with nothing sold.
+3. An unrealized-gains tax bills 20% of that: 200 emeralds. It has 80 in cash, which was meant for wages and equipment, so 120 is missing.
+4. It sells a diamond block, iron and part of its factory to cover the 120.
+5. Year 2: with fewer materials and less factory, sales drop to 240. If prices rise again, the new bill is again bigger than its cash, so it sells more. The loop: prices rise, tax bill exceeds cash, sell assets, less revenue.
+6. Production, jobs and investment shrink. Outro: today, gains are taxed when the asset is sold, because that's when the money is real.
 
 ## Look
 - **Texture pack "Bare Bones"** (clean, flat colors). Four other packs are available through `PACK=faithful|shaders|toon|pastel` (see `engine.PACKS`). `python3 pack_preview.py` renders the comparison sheet in `build/packs/`.
