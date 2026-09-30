@@ -87,6 +87,15 @@ PACKS = {
         horizon=(0.72, 0.74, 0.76), zenith=(0.5, 0.54, 0.6), fog=(40, 85),
         grade=dict(contrast=1.15, sat=0.85, tint=(1.03, 1.0, 0.94)),
     ),
+    "keyart": dict(
+        title="Key Art (official promo look)", res=32, noise=0.55, sat=1.05, pastel=0.0, bevel=0.1,
+        tints={"GRASS": (1.0, 1.06, 0.78), "LEAVES": (1.0, 1.1, 0.8)},
+        shadows=True, soft_shadow=3, ao=0.3, shading="sun", outline=False,
+        sun=(-0.55, 0.62, 0.56), sun_col=(1.2, 1.08, 0.9), amb_col=(0.5, 0.62, 0.86),
+        horizon=(0.72, 0.9, 1.0), zenith=(0.2, 0.55, 1.0), fog=(60, 95),
+        dof=0.7, bloom=0.28, vignette=0.25,
+        grade=dict(contrast=1.1, sat=1.08, tint=(1.03, 1.0, 0.95)),
+    ),
     "plastic": dict(
         title="Plastic (glossy)", res=32, noise=0.06, sat=1.3, pastel=0.04, bevel=0.22, spec=0.45,
         shadows=True, ao=0.14, shading="sun", outline=False,
@@ -317,6 +326,7 @@ class Camera:
         self.r = r / np.linalg.norm(r)
         self.u = np.cross(self.f, self.r)
         self.th = math.tan(math.radians(fov) / 2)   # vertical
+        self.focus = float(np.linalg.norm(np.array(target, np.float64) - self.o))
         self.aspect = RW / RH
 
     def rays(self):
@@ -468,7 +478,79 @@ def grade(col):
     return col * np.array(g["tint"])
 
 
-def render(grid, cam, time, boxes=(), blobs=()):
+def _depth_blur(v, dep, r):
+    """Separable box blur that only mixes pixels at similar depth."""
+    for axis in (0, 1):
+        acc = np.zeros_like(v)
+        wsum = np.zeros_like(v)
+        for o in range(-r, r + 1):
+            vv = np.roll(v, o, axis)
+            dd = np.roll(dep, o, axis)
+            w = (np.abs(dd - dep) < 0.08 * dep + 0.3).astype(v.dtype)
+            acc += vv * w
+            wsum += w
+        v = acc / np.maximum(wsum, 1e-6)
+    return v
+
+
+def _box_blur(img, r):
+    """Fast separable box blur on an (H, W, C) image via cumulative sums."""
+    out = img
+    for axis in (0, 1):
+        pad = [(0, 0)] * out.ndim
+        pad[axis] = (r + 1, r)
+        c = np.cumsum(np.pad(out, pad, mode="edge"), axis=axis)
+        hi = np.take(c, np.arange(2 * r + 1, c.shape[axis]), axis=axis)
+        lo = np.take(c, np.arange(0, c.shape[axis] - 2 * r - 1), axis=axis)
+        out = (hi - lo) / (2 * r + 1)
+    return out
+
+
+def post(col, depth, cam):
+    """Depth of field, bloom and vignette for the promo-art look."""
+    if P.get("dof"):
+        b = _box_blur(_box_blur(col, 2), 2)
+        d = np.where(np.isfinite(depth), depth, 1e3)
+        coc = np.clip((np.abs(d - cam.focus) / (cam.focus * 0.9)) ** 1.3, 0, 1)[..., None] * P["dof"]
+        col = col * (1 - coc) + b * coc
+    if P.get("bloom"):
+        br = np.clip(col - 0.78, 0, None)
+        col = col + _box_blur(_box_blur(br, 6), 6) * P["bloom"] * 2.2
+    if P.get("vignette"):
+        yy, xx = np.mgrid[0:RH, 0:RW]
+        r2 = ((xx / RW - 0.5) * 1.6) ** 2 + ((yy / RH - 0.5) * 1.1) ** 2
+        col = col * (1 - P["vignette"] * np.clip(r2, 0, 1))[..., None]
+    return col
+
+
+def draw_flowers(col, depth, cam, flowers):
+    """Tiny billboard flowers (stem + petals) with depth test. col: (RH*RW, 3) flat."""
+    img = col.reshape(RH, RW, 3)
+    for p, c in flowers:
+        base = cam.project(p)
+        if base is None:
+            continue
+        x, y, dist = base
+        if dist > 40:
+            continue
+        s = 0.42 / (dist * cam.th) * RH / 2
+        if s < 1.2:
+            continue
+        xi, yi = int(x), int(y)
+        stem_h, head = max(1, int(s * 1.3)), max(1, int(s * 0.9))
+        dz = depth.reshape(RH, RW)
+        if not (0 <= xi < RW and 0 <= yi < RH) or dz[min(RH - 1, yi), xi] < dist - 0.6 \
+                or dz[max(0, yi - stem_h - head // 2), xi] < dist - 0.25:
+            continue
+        w = max(1, int(s * 0.18))
+        img[max(0, yi - stem_h):yi, max(0, xi - w // 2):xi + w // 2 + 1] = (0.22, 0.6, 0.18)
+        y0 = yi - stem_h - head
+        img[max(0, y0):max(0, y0 + head), max(0, xi - head // 2):xi + head // 2 + 1] = c
+        cc = max(1, head // 3)
+        img[max(0, y0 + head // 2 - cc // 2):max(0, y0 + head // 2 + cc // 2 + 1), max(0, xi - cc // 2):xi + cc // 2 + 1] = (1.0, 0.9, 0.3)
+
+
+def render(grid, cam, time, boxes=(), blobs=(), flowers=()):
     """blobs: list of (x, z, radius) soft contact shadows under characters."""
     D = cam.rays()
     o = cam.o
@@ -511,6 +593,13 @@ def render(grid, cam, time, boxes=(), blobs=()):
                 d2 = (Pt[:, 0] - bx) ** 2 + (Pt[:, 2] - bz) ** 2
                 near = (n[:, 1] > 0) & (d2 < br * br) & (np.abs(Pt[:, 1] - 12) < 0.05)
                 shadow[near] *= np.clip(np.sqrt(d2[near]) / br, 0.25, 1)
+        if shadow is not None and P.get("soft_shadow"):
+            full = np.ones(D.shape[0])
+            full[m] = shadow
+            tfull = np.full(D.shape[0], 1e4)
+            tfull[m] = t
+            full = _depth_blur(full.reshape(RH, RW), tfull.reshape(RH, RW), P["soft_shadow"]).ravel()
+            shadow = full[m]
         lit = light_for_normal(n, shadow)
         if P["shading"] == "mc":
             for bx, bz, br in blobs:
@@ -539,8 +628,11 @@ def render(grid, cam, time, boxes=(), blobs=()):
         normals[m] = n
     for bx in boxes:
         bx.draw(cam, D, col, depth, normals)
+    if flowers:
+        draw_flowers(col, depth, cam, flowers)
     col = grade(col).reshape(RH, RW, 3)
     depth = depth.reshape(RH, RW)
+    col = post(col, depth, cam)
     if P["outline"]:
         col = outline(col, depth, normals.reshape(RH, RW, 3))
     return col, depth

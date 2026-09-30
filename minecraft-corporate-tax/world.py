@@ -266,3 +266,22 @@ def villager(sk, pos, yaw, walk=0.0, head_yaw=0.0, tint=1.0, nod=0.0):
     boxes.append(Box(base + Rh @ (np.array((0, 5, 0)) * PX), np.array((4, 5, 4)) * PX, Rh, sk["head"], tint))
     boxes.append(Box(base + Rh @ (np.array((0, 3, 5)) * PX), np.array((1, 2, 1)) * PX, Rh, sk["nose"], tint))
     return boxes
+
+
+def flower_field(g, center=(94.0, 96.0), radius=30, n=750, seed=5):
+    """Random flowers on open grass: [(pos, rgb)]."""
+    rng = np.random.default_rng(seed)
+    cols = [(0.72, 0.42, 0.95), (1.0, 0.85, 0.2), (0.95, 0.25, 0.25), (0.98, 0.98, 0.95), (0.4, 0.6, 1.0)]
+    out = []
+    while len(out) < n:
+        x = center[0] + (rng.random() * 2 - 1) * radius
+        z = center[1] + (rng.random() * 2 - 1) * radius
+        ix, iz = int(x), int(z)
+        top = np.nonzero(g[ix, :, iz])[0]
+        if len(top) == 0:
+            continue
+        y = top[-1]
+        if g[ix, y, iz] != GRASS:
+            continue
+        out.append(((x, y + 1.0, z), cols[int(rng.integers(len(cols)))]))
+    return out
