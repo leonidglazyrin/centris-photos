@@ -1,0 +1,4 @@
+node_modules/
+stills/
+out/
+*.log
