@@ -556,15 +556,46 @@ def step_card(n, name, alpha):
     return im
 
 
+def shot_cam(lt, shots, blend=0.5, push=0.16):
+    """shots: [(t_start, cam_pos, target, fov)] sorted. Eases between shots, slow push-in within a shot."""
+    def at(i):
+        t0, pos, tgt, fov = shots[i]
+        pos, tgt = np.asarray(pos, float), np.asarray(tgt, float)
+        k = 1 - push * ss((lt - t0) / 4.0)
+        return tgt + (pos - tgt) * k, tgt, fov
+    i = 0
+    while i + 1 < len(shots) and lt >= shots[i + 1][0]:
+        i += 1
+    pos, tgt, fov = at(i)
+    if i > 0 and lt - shots[i][0] < blend:
+        k = ss((lt - shots[i][0]) / blend)
+        p0, t0_, f0 = at(i - 1)
+        pos, tgt, fov = lerp(p0, pos, k), lerp(t0_, tgt, k), f0 * (1 - k) + fov * k
+    return E.Camera(pos, tgt, fov)
+
+
+def around(subject, yaw, dist, height, look_up=0.0):
+    """Camera placed `dist` blocks from subject in direction `yaw`, looking at it."""
+    s_ = np.asarray(subject, float)
+    return (s_ + np.array((math.sin(yaw) * dist, height, math.cos(yaw) * dist)), s_ + np.array((0, look_up, 0)))
+
+
 def arc(a, b, k, h=2.5):
     return lerp(a, b, k) + np.array((0, h * math.sin(math.pi * k), 0))
 
 
 def scene_intro(lt, S, wd):
     D = S["dur"]
-    cam = path(lt, [(0, (66, 40, 70), (96, 14, 96), 80), (D, (78, 33, 76), (96, 14, 96), 78)])
-    boxes = W.player(GRIEFER_SK, G_HOME, math.pi * 0.85)
-    a = fade(lt, 0.3, D - 0.15, 0.35)
+    gy = math.pi * 0.85
+    face = np.add(G_HOME, (0, 1.55, 0))
+    tc, td, t3 = word_t(S, "criminals"), word_t(S, "dirty"), word_t(S, "three")
+    shots = [(0, (66, 40, 70), (96, 14, 96), 80), (0.01, (74, 36, 74), (94, 14, 96), 80),
+             (tc - 0.1, *around(face, gy, 2.4, 0.25), 58),
+             (td - 0.1, *around(STASH_C, 2.35, 5.4, 2.2), 62),
+             (t3 - 0.2, (80, 30, 80), (96, 14, 96), 78)]
+    cam = shot_cam(lt, shots)
+    boxes = W.player(GRIEFER_SK, G_HOME, gy, head_yaw=0.25 * math.sin(lt * 2))
+    a = fade(lt, 0.3, tc - 0.1, 0.3)
 
     def title(fr):
         put(fr, ptext("MONEY", (235, 235, 235), 12), OW / 2, 330, alpha=a)
@@ -575,8 +606,16 @@ def scene_intro(lt, S, wd):
 
 def scene_dirty(lt, S, wd):
     D = S["dur"]
-    cam = path(lt, [(0, (88.5, 16.5, 91.5), (81, 13.2, 100.5), 74), (D, (87.2, 15.6, 93.0), (81, 13.2, 100.5), 70)])
     look = lt > word_t(S, "everyone") - 0.3
+    gy0 = yaw_to(G_HOME, (88, 12, 93))
+    face = np.add(G_HOME, (0, 1.55, 0))
+    vmid = (86.0, 13.6, 98.6)
+    shots = [(0, *around(face, gy0, 2.6, 0.3), 58),
+             (word_t(S, "stack") - 0.1, *around(STASH_C, 2.35, 3.8, 1.5), 60),
+             (word_t(S, "risky") - 0.1, *around(face, gy0, 3.6, 0.8), 62),
+             (word_t(S, "everyone") - 0.25, (83.4, 13.9, 96.6), vmid, 62),
+             (word_t(S, "stolen") - 0.1, (88.5, 16.5, 91.5), (81, 13.2, 100.5), 70)]
+    cam = shot_cam(lt, shots)
     boxes = W.player(GRIEFER_SK, G_HOME, yaw_to(G_HOME, (88, 12, 93)), head_yaw=0.5 * math.sin(lt * 3) if look else 0.0)
     vpos = [(85.6, 12.0, 99.8), (86.4, 12.0, 97.4)]
     for i, (sk, p) in enumerate(zip(VILL_SK, vpos)):
@@ -596,36 +635,42 @@ PLACE_ROUTE = [(79.5, 12.0, 88.5), (84.0, 12.0, 85.6), (94.0, 12.0, 85.6), (103.
 
 
 def scene_place(lt, S, wd):
-    s0 = S["st"][0]
     D = S["dur"]
-    L = path_len(PLACE_ROUTE)
-    speed = L / max(3.0, S["en"][0] - 1.0)
-    gp, gyaw, gw = walk_path(max(0.0, lt - 0.4), PLACE_ROUTE, speed)
-    if lt - 0.4 > L / speed:
-        gyaw = math.pi
-    cx = float(np.clip(gp[0], 84, 101))
-    cam = E.Camera((cx + 1.5, 19.5, 95.5), (cx + 1.0, 13.2, 82.5), 76)
+    t_small, t_diff, t_shops = word_t(S, "small"), word_t(S, "different"), word_t(S, "shops")
+    doors = [W.door_of(b) for b in W.BANKS]
+    stand = [np.add(d, (-0.9, 0, 0.5)) for d in doors]
+    route = [(79.5, 12.0, 88.5), (82.0, 12.0, 85.9), tuple(stand[0])]
+    speed = path_len(route) / max(1.0, t_small - 0.5)
+    visits = [(t_small, 0), (t_diff, 1), (t_shops, 2)]
+    if lt < t_small:
+        gp, gyaw, gw = walk_path(max(0.0, lt - 0.3), route, speed)
+    else:
+        vi = max(i for tt, i in visits if lt >= tt - 0.05)
+        gp, gyaw, gw = np.array(stand[vi]), yaw_to(stand[vi], doors[vi]), 0.0
+    shots = [(0, gp + np.array((1.4, 2.4, 5.0)), gp + np.array((0.8, 1.2, -2.0)), 64)]
+    for tt, i in visits:
+        d = np.array(doors[i])
+        shots.append((tt - 0.12, d + np.array((1.2, 1.7, 4.4)), d + np.array((-0.9, 1.1, -0.6)), 62))
+    shots.append((S["en"][0] - 0.2, (94.0, 20.5, 96.5), (94.0, 14.0, 81.0), 70))
+    cam = shot_cam(lt, shots, blend=0.35)
     boxes = W.player(GRIEFER_SK, gp, gyaw, walk=gw)
     sprites_, vals, sfx = [], [], []
     dirty = 64
-    for i, b in enumerate(W.BANKS):
-        door = W.door_of(b)
-        # time the griefer passes this door
-        d_along = path_len(PLACE_ROUTE[:2]) + (door[0] - PLACE_ROUTE[1][0])
-        ta = 0.4 + d_along / speed
+    for tt, i in visits:
+        door = doors[i]
         for j in range(4):
-            tj = ta - 0.2 + j * 0.12
+            tj = tt + 0.15 + j * 0.14
             k = (lt - tj) / 0.55
             if 0 <= k < 1:
-                sprites_.append((arc(np.add(gp, (0, 1.2, 0)), np.add(door, (0, 1.0, -1.2)), k, 1.2), 0.38, DIRTY))
+                sprites_.append((arc(np.add(stand[i], (0.2, 1.2, 0)), np.add(door, (0, 1.0, -1.2)), k, 0.9), 0.3, DIRTY))
             sfx.append((S["t0"] + tj + 0.5, "coin", 0.9 + 0.05 * j))
             if lt > tj + 0.55:
                 dirty -= 4
-        if lt > ta:
-            vals.append((W.top_of(b, 0.4), [("+ small deposit", (255, 255, 255))], None))
+        if lt > tt + 0.4:
+            vals.append((W.top_of(W.BANKS[i], -1.2), [("+ small deposit", (255, 255, 255))], None))
     labels = [(np.add(gp, (0, 2.3, 0)), "Griefer", (255, 255, 255))]
     for b in W.BANKS:
-        labels.append((W.top_of(b, 1.9), b[0], (255, 226, 60)))
+        labels.append((W.top_of(b, 1.0), b[0], (255, 226, 60)))
     ca = fade(lt, 0.1, D + 1, 0.3)
 
     def card(fr):
@@ -640,10 +685,8 @@ NODES = [W.BANKS[0], W.SHELLS[0], W.SHELLS[2], W.BANKS[2], W.SHELLS[1], W.SHELLS
 
 def scene_layer(lt, S, wd):
     D = S["dur"]
-    c = np.array((97.0, 12.0, 95.0))
-    a = 0.18 * lt
-    cam = E.Camera(c + np.array((-20 * math.sin(0.5 + a), 36, -20 * math.cos(0.5 + a))), c, 80)
     sprites_, sfx, segs = [], [], []
+    lead = None
     hop = 0.55
     for stream in range(3):
         off = stream * 4
@@ -656,7 +699,10 @@ def scene_layer(lt, S, wd):
             a_ = NODES[(off + h) % len(NODES)]
             b_ = NODES[(off + h + 1) % len(NODES)]
             if h == n:
-                sprites_.append((arc(W.top_of(a_, 0), W.top_of(b_, 0), k, 4.0), 0.9, DIRTY))
+                q = arc(W.top_of(a_, 0), W.top_of(b_, 0), k, 4.0)
+                sprites_.append((q, 0.9, DIRTY))
+                if stream == 0:
+                    lead = q
             else:
                 segs.append((W.top_of(a_, 0), W.top_of(b_, 0), t_s - (h + 1) * hop))
         if k < 0.1 and stream == 0:
@@ -665,6 +711,17 @@ def scene_layer(lt, S, wd):
         sfx.append((S["t0"] + 0.5 + h * hop, "coin", 0.8 + 0.02 * (h % 8)))
     labels = [(W.top_of(b, 1.8), b[0], (255, 226, 60) if "Shell" in b[0] or "Offshore" in b[0] else (255, 255, 255))
               for b in W.SHELLS + W.BANKS]
+    if lead is None:
+        lead = np.array(W.top_of(NODES[0], 0))
+    c = np.array((97.0, 12.0, 95.0))
+    a = 0.18 * lt
+    chase = (lead + np.array((5.5, 3.5, -6.0)), lead)
+    s1 = W.SHELLS[0]
+    fac = np.array(W.door_of(s1))
+    shots = [(0, *chase, 66), (word_t(S, "fake") - 0.15, fac + np.array((-8.5, 4.5, -4.0)), fac + np.array((2.5, 2.2, 0)), 66),
+             (word_t(S, "again") - 0.15, *chase, 66),
+             (word_t(S, "trail") - 0.2, c + np.array((-20 * math.sin(0.5 + a), 36, -20 * math.cos(0.5 + a))), c, 80)]
+    cam = shot_cam(lt, shots, blend=0.45, push=0.0)
     ca = fade(lt, 0.1, D + 1, 0.3)
 
     def web(fr):
@@ -690,20 +747,23 @@ def scene_integ(lt, S, wd):
     bak_door = W.door_of(W.BAKERY)
     route = [(bak_door[0] - 1.0, 12.0, bak_door[2]), (108.8, 12.0, 88.0), (109.5, 12.0, 98.5), (115.2, 12.0, 99.0)]
     tw = lt - t_spend
-    gp, gyaw, gw = walk_path(max(0.0, tw), route, 4.0)
+    gp, gyaw, gw = walk_path(max(0.0, tw), route, 3.2)
     if tw < 0:
         gyaw = yaw_to(route[0], bak_door)
-    cam = path(lt, [(0, (101.5, 18.0, 91.0), (111.5, 13.5, 81.5), 74), (t_bak + 0.8, (101.8, 18.0, 90.5), (111.5, 13.5, 81.5), 74),
-                    (t_bak + 0.8 + (t_spend + 1.6 - t_bak - 0.8) * 0.5, (104.5, 28.0, 93.0), (116.0, 13.0, 94.0), 80),
-                    (t_spend + 1.6, (103.8, 23.5, 97.6), (119.5, 14.5, 99.0), 78), (D, (103.2, 24.0, 97.5), (119.5, 14.5, 99.0), 78)])
+    bd = np.array(bak_door)
+    shots = [(0, bd + np.array((-4.8, 2.2, 3.4)), bd + np.array((0.2, 1.2, 0)), 62),
+             (word_t(S, "legit") - 0.15, (103.8, 17.0, 86.0), (113.5, 14.2, 80.5), 66),
+             (t_spend - 0.15, gp + np.array((-1.6, 1.9, 3.6)), gp + np.array((0, 1.45, 0)), 58),
+             (t_man - 0.2, (103.8, 23.5, 97.6), (119.5, 14.5, 99.0), 76)]
+    cam = shot_cam(lt, shots, blend=0.45)
     boxes = W.player(SUIT_SK, gp, gyaw, walk=gw if tw > 0 else 0.0)
     sprites_, sfx = [], []
     clean = 0
     for j in range(8):
-        tj = t_bak + j * 0.18
+        tj = word_t(S, "money") + 0.1 + j * 0.2
         k = (lt - tj) / 0.6
         if 0 <= k < 1:
-            sprites_.append((arc(np.add(bak_door, (1.0, 1.2, 0)), np.add(route[0], (0, 1.2, 0)), k, 1.5), 0.45, EMERALD))
+                sprites_.append((arc(np.add(bak_door, (1.0, 1.2, 0)), np.add(route[0], (0, 1.2, 0)), k, 1.5), 0.3, EMERALD))
         if lt > tj + 0.6:
             clean += 8
         sfx.append((S["t0"] + tj + 0.6, "coin", 1.0 + 0.04 * j))
@@ -730,14 +790,19 @@ def scene_integ(lt, S, wd):
                 sprites=sprites_, overlays=[card], inv=inv(0, min(64, clean)), sfx=sfx)
 
 
-FLAG_ROWS = [("Lots of small deposits", "small", W.BANKS),
+FLAG_ROWS = [("Lots of small deposits", "red", W.BANKS),
              ("Earning way more than it should", "earning", [W.BAKERY]),
              ("Money going in circles", "circles", W.SHELLS)]
 
 
 def scene_flags(lt, S, wd):
     D = S["dur"]
-    cam = path(lt, [(0, (90.0, 31.0, 104.0), (104, 12.5, 87), 80), (D, (88.5, 32.0, 105.5), (104, 12.5, 87), 80)])
+    shots = [(0, (89.5, 15.0, 91.5), (85.5, 14.5, 80.5), 62),
+             (word_t(S, "red") - 0.15, (90.2, 20.8, 88.0), (85.8, 17.6, 80.4), 62),
+             (word_t(S, "small") - 0.15, (94.0, 23.0, 94.0), (94.0, 15.0, 80.0), 70),
+             (word_t(S, "earning") - 0.15, (109.5, 20.0, 86.8), (115.5, 17.5, 80.4), 60),
+             (word_t(S, "circles") - 0.15, (98.0, 33.0, 96.0), (108.5, 14.0, 99.0), 78)]
+    cam = shot_cam(lt, shots, blend=0.4)
     g = wd.mansion.copy()
     sfx, vals = [], []
     for name, key, blds in FLAG_ROWS:
@@ -751,7 +816,7 @@ def scene_flags(lt, S, wd):
 
     def panel(fr):
         for i, (name, key, _) in enumerate(FLAG_ROWS):
-            a = fade(lt, word_t(S, key) - 0.2, D + 1, 0.25)
+            a = fade(lt, word_t(S, ("small", "earning", "circles")[i]) - 0.2, D + 1, 0.25)
             if a <= 0:
                 continue
             row = Image.new("RGBA", (980, 120), (0, 0, 0, 0))
@@ -771,7 +836,12 @@ def scene_caught(lt, S, wd):
     gpos = np.array((115.2, 12.0, 99.0))
     route = [(100.0, 12.0, 92.0), (109.0, 12.0, 95.5), (113.0, 12.0, 98.4)]
     gp_, gyaw, gw = walk_path(lt, route, 3.2)
-    cam = path(lt, [(0, (103.8, 16.6, 97.6), (115.5, 14.2, 99.0), 70), (D, (104.6, 17.2, 97.6), (116.5, 15.0, 99.0), 72)])
+    fwd = np.array((math.sin(gyaw), 0, math.cos(gyaw)))
+    gface = gp_ + np.array((0, 2.6, 0))
+    shots = [(0, gface + fwd * 4.4 + np.array((0.8, 0.3, 0)), gface - np.array((0, 0.4, 0)), 60),
+             (word_t(S, "trail") - 0.15, (103.8, 16.6, 97.6), (115.5, 14.2, 99.0), 68),
+             (word_t(S, "scheme") - 0.15, (103.4, 23.0, 97.6), (119.5, 15.0, 99.0), 76)]
+    cam = shot_cam(lt, shots, blend=0.45)
     boxes = W.iron_golem(GOLEM_SK, gp_, gyaw, gw * 0.6)
     arrive = path_len(route) / 3.2
     boxes += W.player(SUIT_SK, gpos, yaw_to(gpos, gp_), arm_r=-2.9 if lt > arrive else None, arm_l=-2.9 if lt > arrive else None)
