@@ -1,0 +1,4 @@
+numpy
+pillow
+imageio-ffmpeg
+edge-tts
