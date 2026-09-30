@@ -9,6 +9,8 @@ import world as W
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "packs")
 os.makedirs(OUT, exist_ok=True)
 g = W.build_base()
+W.tree(g, 87, 12, 91, 5)
+W.tree(g, 100, 12, 93, 5)
 ceo, tax = W.skin_set("ceo"), W.skin_set("taxman")
 font = ImageFont.truetype(os.path.join(os.path.dirname(__file__), "assets", "Montserrat.ttf"), 64)
 font.set_variation_by_name("ExtraBold")

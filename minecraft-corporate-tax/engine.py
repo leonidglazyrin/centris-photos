@@ -50,6 +50,50 @@ PACKS = {
         horizon=(1.0, 0.88, 0.92), zenith=(0.62, 0.74, 1.0), fog=(55, 95),
         grade=dict(contrast=0.95, sat=1.0, tint=(1.02, 0.99, 1.02)),
     ),
+    "comic": dict(
+        title="Comic HD", res=32, noise=0.3, sat=1.3, pastel=0.0, posterize=7, tex_border=0.72,
+        shadows=True, ao=0.12, shading="sun", outline=True,
+        sun=(-0.4, 0.7, 0.6), sun_col=(1.0, 0.97, 0.9), amb_col=(0.62, 0.66, 0.78),
+        horizon=(0.7, 0.88, 1.0), zenith=(0.25, 0.58, 1.0), fog=(65, 95),
+        grade=dict(contrast=1.12, sat=1.25, tint=(1.0, 1.0, 1.0)),
+    ),
+    "realistic": dict(
+        title="Realistic 64x", res=64, noise=1.25, sat=0.82, pastel=0.0,
+        shadows=True, ao=0.24, shading="sun", outline=False,
+        sun=(-0.55, 0.52, 0.66), sun_col=(1.12, 1.04, 0.92), amb_col=(0.46, 0.52, 0.64),
+        horizon=(0.8, 0.86, 0.94), zenith=(0.4, 0.56, 0.84), fog=(45, 95),
+        grade=dict(contrast=1.14, sat=0.95, tint=(1.02, 1.0, 0.97)),
+    ),
+    "retro": dict(
+        title="Retro 8-bit", res=8, noise=1.0, sat=1.2, pastel=0.0,
+        shadows=False, ao=0.0, shading="mc", outline=False,
+        sun=(-0.35, 0.7, 0.62), sun_col=(1, 1, 1), amb_col=(1, 1, 1),
+        horizon=(0.62, 0.78, 1.0), zenith=(0.45, 0.62, 1.0), fog=(70, 95),
+        grade=dict(contrast=1.1, sat=1.2, tint=(1.0, 1.0, 1.0)),
+    ),
+    "autumn": dict(
+        title="Autumn", res=32, noise=0.6, sat=1.1, pastel=0.0,
+        tints={"LEAVES": (3.4, 0.95, 0.9), "GRASS": (1.3, 0.92, 0.8)},
+        shadows=True, ao=0.2, shading="sun", outline=False,
+        sun=(-0.6, 0.45, 0.66), sun_col=(1.2, 0.95, 0.7), amb_col=(0.5, 0.48, 0.6),
+        horizon=(1.0, 0.84, 0.66), zenith=(0.46, 0.6, 0.9), fog=(50, 95),
+        grade=dict(contrast=1.08, sat=1.12, tint=(1.05, 0.99, 0.9)),
+    ),
+    "medieval": dict(
+        title="Medieval (overcast)", res=32, noise=1.0, sat=0.62, pastel=0.0,
+        tints={"GRASS": (0.9, 0.9, 0.8), "LEAVES": (0.85, 0.85, 0.75), "QUARTZ": (0.8, 0.77, 0.72)},
+        shadows=True, ao=0.26, shading="sun", outline=False,
+        sun=(-0.3, 0.8, 0.5), sun_col=(0.55, 0.55, 0.55), amb_col=(0.62, 0.63, 0.66),
+        horizon=(0.72, 0.74, 0.76), zenith=(0.5, 0.54, 0.6), fog=(40, 85),
+        grade=dict(contrast=1.15, sat=0.85, tint=(1.03, 1.0, 0.94)),
+    ),
+    "plastic": dict(
+        title="Plastic (glossy)", res=32, noise=0.06, sat=1.3, pastel=0.04, bevel=0.22, spec=0.45,
+        shadows=True, ao=0.14, shading="sun", outline=False,
+        sun=(-0.45, 0.66, 0.6), sun_col=(1.0, 1.0, 1.0), amb_col=(0.66, 0.7, 0.8),
+        horizon=(0.78, 0.9, 1.0), zenith=(0.3, 0.6, 1.0), fog=(65, 95),
+        grade=dict(contrast=1.06, sat=1.18, tint=(1.0, 1.0, 1.0)),
+    ),
 }
 P = PACKS["faithful"]
 TEX = None
@@ -221,8 +265,14 @@ def make_textures(pack):
     global _NOISE
     _NOISE = pack["noise"]
     T = _design16()
+    for name, mul in pack.get("tints", {}).items():
+        T[globals()[name]] *= np.array(mul, np.float32)
+    T = np.clip(T, 0, 1)
     res = pack["res"]
-    if res != 16:
+    if res < 16:
+        k = 16 // res
+        T = T.reshape(NB, 3, res, k, res, k, 3).mean((3, 5))
+    elif res != 16:
         k = res // 16
         T = T.repeat(k, axis=2).repeat(k, axis=3)
         # soften blocky design pixels a little and add fine grain
@@ -235,6 +285,25 @@ def make_textures(pack):
     lum = T.mean(-1, keepdims=True)
     T = lum + (T - lum) * pack["sat"]
     T = T * (1 - pack["pastel"]) + pack["pastel"]
+    if pack.get("bevel"):
+        # smooth rounded-edge look: light top/left rim, dark bottom/right rim
+        bv = pack["bevel"]
+        w = max(2, res // 10)
+        ramp = np.linspace(1, 0, w, dtype=np.float32)
+        for i in range(w):
+            T[:, :, i] *= 1 + bv * ramp[i]
+            T[:, :, :, i] *= 1 + bv * 0.6 * ramp[i]
+            T[:, :, -1 - i] *= 1 - bv * ramp[i]
+            T[:, :, :, -1 - i] *= 1 - bv * 0.6 * ramp[i]
+    if pack.get("posterize"):
+        n = pack["posterize"]
+        T = np.round(np.clip(T, 0, 1) * n) / n
+    if pack.get("tex_border"):
+        b = max(1, res // 16)
+        T[:, :, :b] *= pack["tex_border"]
+        T[:, :, -b:] *= pack["tex_border"]
+        T[:, :, :, :b] *= pack["tex_border"]
+        T[:, :, :, -b:] *= pack["tex_border"]
     return np.clip(T, 0, 1).astype(np.float32)
 
 
@@ -451,6 +520,16 @@ def render(grid, cam, time, boxes=(), blobs=()):
         if P["ao"] > 0:
             lit *= ambient_occlusion(grid, Pt, ax, n)[:, None]
         c = c * lit
+        if P.get("spec"):
+            # glossy highlight (Blinn-Phong) for the plastic look
+            L = np.array(P["sun"], np.float64)
+            L /= np.linalg.norm(L)
+            hv = L[None] - Dm
+            hv /= np.linalg.norm(hv, axis=1, keepdims=True)
+            sp = np.clip((n * hv).sum(1), 0, 1) ** 30 * P["spec"]
+            if shadow is not None:
+                sp = sp * shadow
+            c = c + sp[:, None]
         pm = ids == PORTAL
         c[pm] = np.clip(c[pm] * 1.3, 0, 1)
         f0, f1 = P["fog"]
