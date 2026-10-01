@@ -11,7 +11,7 @@ import { createMaterials, createWaterMaterial, U } from './materials.js';
 import { createSky } from './sky.js';
 import { Character } from './characters.js';
 import { Lantern, LightPool, buildBoat, buildMap, Particles, SkyLanterns, createMist } from './props.js';
-import { FILM } from './film.js';
+import { FILM, needsLocalizedFrame } from './film.js';
 
 const params = new URLSearchParams(location.search);
 const OUT_W = +(params.get('w') ?? 1920), OUT_H = Math.round(OUT_W * 9 / 16);
@@ -273,6 +273,7 @@ function renderFrame(frame) {
 window.renderFrame = (frame, quality = 0.93) => { renderFrame(frame); return out.toDataURL('image/jpeg', quality); };
 window.renderOnly = (frame) => { renderFrame(frame); return true; };
 window.FILM = FILM;
+window.needsLocalizedFrame = (f) => needsLocalizedFrame(f / FPS);
 window.STAGE = STAGE;
 window.packSheet = () => packSheet(6).toDataURL('image/png');
 await loadFonts();

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PX, pix, tex, paintedBox } from './characters.js';
 import { Voxels, meshVoxels, B } from './world.js';
 import { U } from './materials.js';
+import { tr } from './i18n.js';
 import { hash2, mulberry32, clamp, noise1 } from './util.js';
 
 // ---------------- lantern ----------------
@@ -116,7 +117,7 @@ export function mapTexture(finished) {
   // grove
   c.fillStyle = '#e59ab4';
   for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(95 + (i % 3) * 20 + r() * 6, 130 + Math.floor(i / 3) * 18, 8, 0, 7); c.fill(); }
-  c.fillStyle = ink; c.font = 'italic 15px Georgia'; c.fillText('Cherry Grove', 70, 205);
+  c.fillStyle = ink; c.font = `italic ${tr('Cherry Grove').length > 14 ? 12 : 15}px Georgia`; c.fillText(tr('Cherry Grove'), tr('Cherry Grove').length > 14 ? 48 : 70, 205);
   // village + pier
   c.fillStyle = '#b8583f';
   for (const [x, y] of [[236, 100], [262, 92], [284, 104], [250, 118]]) { c.fillRect(x, y, 14, 10); c.beginPath(); c.moveTo(x - 2, y); c.lineTo(x + 7, y - 7); c.lineTo(x + 16, y); c.fill(); }
@@ -130,22 +131,22 @@ export function mapTexture(finished) {
   // hill + tree
   c.beginPath(); c.moveTo(380, 130); c.quadraticCurveTo(412, 88, 444, 130); c.stroke();
   c.fillStyle = '#e59ab4'; c.beginPath(); c.arc(412, 94, 9, 0, 7); c.fill();
-  c.fillStyle = ink; c.font = 'italic 15px Georgia'; c.fillText('Our tree', 386, 150);
+  c.fillStyle = ink; c.font = 'italic 15px Georgia'; c.fillText(tr('Our tree'), tr('Our tree').length > 9 ? 372 : 386, 162);
   c.restore();
   // title + compass
   c.fillStyle = ink; c.font = 'bold 26px Georgia'; c.textAlign = 'center';
-  c.fillText('Willow Lake', W / 2, 52);
+  c.fillText(tr('Willow Lake'), W / 2, 52);
   c.save(); c.translate(W - 64, H - 70); c.strokeStyle = ink; c.lineWidth = 2;
   c.beginPath(); c.moveTo(0, -26); c.lineTo(7, 0); c.lineTo(0, 26); c.lineTo(-7, 0); c.closePath(); c.stroke();
   c.font = 'bold 13px Georgia'; c.fillText('N', 0, -30); c.restore();
   if (finished) {
     c.fillStyle = '#b8323a'; c.font = 'bold 30px Georgia'; c.textAlign = 'center';
-    c.fillText('HOME', W / 2, 250);
-    c.beginPath(); const hx = W / 2 + 56, hy = 238;
+    c.fillText(tr('HOME'), W / 2, 250);
+    c.beginPath(); const hx = W / 2 + c.measureText(tr('HOME')).width / 2 + 16, hy = 238;
     c.moveTo(hx, hy + 8); c.bezierCurveTo(hx - 14, hy - 2, hx - 6, hy - 12, hx, hy - 4); c.bezierCurveTo(hx + 6, hy - 12, hx + 14, hy - 2, hx, hy + 8); c.fill();
   } else {
     c.fillStyle = 'rgba(90,58,34,0.6)'; c.font = 'italic 16px Georgia'; c.textAlign = 'center';
-    c.fillText('unexplored', W * 0.72, H / 2 + 10);
+    c.fillText(tr('unexplored'), W * 0.72, H / 2 + 10);
   }
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;

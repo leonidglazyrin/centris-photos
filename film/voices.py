@@ -6,7 +6,10 @@ room reverb is added, and out/final_mix.wav is written.
 import numpy as np
 import wave
 import re
+import sys
 from kokoro_onnx import Kokoro
+
+FRENCH = len(sys.argv) > 1 and sys.argv[1] == 'fr'
 
 SR = 44100
 VOICE = {'juno': 'af_heart', 'rowan': 'am_michael', 'narrator': 'bm_george'}
@@ -52,6 +55,44 @@ LINES = [
 ]
 
 
+LINES_FR = [
+    (3.6, 12.6, 'narrator', "Chaque village a une histoire qu'il se raconte. Au Lac des Saules, c'était l'histoire d'une lanterne."),
+    (14.8, 24.0, 'narrator', "Juno fabriquait des lanternes. Toutes brillaient le long du vieux ponton. Toutes, sauf la dernière."),
+    (26.5, 30.0, 'juno', "Grand-mère disait toujours que le dernier poteau attend..."),
+    (30.1, 35.5, 'juno', "...quelqu'un pour qui ça vaut la peine de l'allumer."),
+    (37.0, 46.0, 'narrator', "Et un matin de printemps, sortant de la brume, arriva quelqu'un qui n'était jamais resté nulle part assez longtemps pour s'y sentir chez soi."),
+    (49.6, 54.2, 'rowan', "Bonjour ! C'est bien... le Lac des Saules ? Il n'est sur aucune carte."),
+    (54.4, 58.0, 'juno', "Alors ta carte est fausse."),
+    (59.0, 62.4, 'rowan', "Moi, c'est Rowan. Je dessine des cartes."),
+    (62.6, 65.7, 'juno', "Juno. Je fabrique des lanternes."),
+    (65.9, 69.9, 'rowan', "Alors tu pourras peut-être m'aider à trouver mon chemin."),
+    (71.0, 73.9, 'narrator', "Et c'est ce qu'elle fit."),
+    (74.0, 79.2, 'juno', "Voici le bosquet. Chaque arbre ici a un nom."),
+    (79.6, 85.8, 'narrator', "Les jours qui suivirent furent petits, lumineux, et pleins."),
+    (86.0, 90.8, 'rowan', "Rivières, crêtes, chemins... je peux tout cartographier."),
+    (91.0, 94.5, 'juno', "Pas tout."),
+    (99.6, 103.2, 'rowan', "La mienne ressemble à une patate."),
+    (103.4, 107.6, 'juno', "Une patate lumineuse. Elle est parfaite."),
+    (109.5, 119.0, 'narrator', "Ils plantèrent un arbre sur la colline. Aucun des deux ne dit à voix haute à quoi il servait."),
+    (124.0, 128.2, 'rowan', "La carte est presque finie."),
+    (128.6, 132.6, 'juno', "...Et ensuite tu pars."),
+    (133.0, 138.0, 'rowan', "Les cartographes partent toujours. C'est le métier."),
+    (142.0, 153.5, 'narrator', "Ce soir-là, les lanternes s'allumèrent une à une, tout le long du ponton. Le dernier poteau resta dans le noir."),
+    (158.4, 162.6, 'rowan', "Je reviendrai."),
+    (163.0, 166.8, 'juno', "Tout le monde dit ça."),
+    (173.0, 183.5, 'narrator', "Alors Juno fit la seule chose qu'elle savait faire. Elle fabriqua une lanterne. La plus belle qu'elle ait jamais faite."),
+    (190.6, 195.0, 'juno', "Pour que tu retrouves ton chemin."),
+    (198.0, 212.5, 'narrator', "L'hiver arriva. Le lac s'immobilisa, et la neige recouvrit tout. Et chaque nuit, la dernière lanterne brûlait quand même."),
+    (215.5, 225.5, 'narrator', "Elle attendit. Pas parce qu'elle en était sûre... mais parce que quelqu'un devait garder la lumière allumée."),
+    (228.0, 239.5, 'narrator', "Puis vint le printemps. Et loin sur l'eau sombre, une petite lumière répondit."),
+    (247.6, 251.0, 'rowan', "J'ai fini la carte."),
+    (251.2, 256.0, 'rowan', "Il se trouve que tous ses chemins mènent ici."),
+    (257.0, 260.6, 'juno', "Tu as suivi la lanterne."),
+    (261.4, 264.4, 'rowan', "C'est toi que j'ai suivie."),
+    (271.0, 284.0, 'narrator', "Certaines cartes sont faites pour partir. Les plus belles... montrent le chemin de la maison."),
+]
+
+
 def resample(x, sr_in, sr_out=SR):
     n = int(len(x) * sr_out / sr_in)
     return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x)
@@ -81,6 +122,21 @@ def read_wav(p):
 
 
 k = Kokoro('tts/kokoro-v1.0.onnx', 'tts/voices-v1.0.bin')
+if FRENCH:
+    from piper import PiperVoice, SynthesisConfig
+    PIPER = {'rowan': (PiperVoice.load('tts/fr_FR-tom-medium.onnx'), None), 'narrator': (PiperVoice.load('tts/fr_FR-upmc-medium.onnx'), 1)}
+    LINES = LINES_FR
+    SPEED = {'juno': 0.95, 'rowan': 1.0, 'narrator': 0.92}
+
+
+def synth(text, who, speed):
+    if FRENCH and who in PIPER:
+        v, spk = PIPER[who]
+        chunks = list(v.synthesize(text, SynthesisConfig(speaker_id=spk, length_scale=1 / speed)))
+        return np.concatenate([c.audio_float_array for c in chunks]), chunks[0].sample_rate
+    if FRENCH:
+        return k.create(text, voice='ff_siwis', speed=speed, lang='fr-fr')
+    return k.create(text, voice=VOICE[who], speed=speed, lang='en-gb' if who == 'narrator' else 'en-us')
 music = read_wav('out/score.wav')
 N = music.shape[1]
 voice = np.zeros((2, N))
@@ -89,7 +145,7 @@ speech_mask = np.zeros(N)
 for start, end, who, text in LINES:
     speed = SPEED[who]
     for attempt in range(6):
-        samples, sr = k.create(text, voice=VOICE[who], speed=speed, lang='en-gb' if who == 'narrator' else 'en-us')
+        samples, sr = synth(text, who, speed)
         clip = trim(resample(np.asarray(samples, dtype=np.float64), sr))
         dur = len(clip) / SR
         if start + dur <= end + 0.15 or attempt == 5:
@@ -119,9 +175,10 @@ mix = music * music_gain + voice * 0.95
 peak = np.max(np.abs(mix))
 mix = np.tanh(mix / peak * 1.1) / np.tanh(1.1) * 0.92
 pcm = (np.clip(mix.T, -1, 1) * 32767).astype('<i2')
-with wave.open('out/final_mix.wav', 'wb') as w:
+OUT = 'out/final_mix_fr.wav' if FRENCH else 'out/final_mix.wav'
+with wave.open(OUT, 'wb') as w:
     w.setnchannels(2)
     w.setsampwidth(2)
     w.setframerate(SR)
     w.writeframes(pcm.tobytes())
-print('wrote out/final_mix.wav')
+print('wrote', OUT)

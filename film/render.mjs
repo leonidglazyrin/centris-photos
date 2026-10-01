@@ -28,7 +28,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.error('[page]', m.text().slice(0, 400)); });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
-await page.goto(`http://localhost:${port}/index.html?w=${W}`);
+await page.goto(`http://localhost:${port}/index.html?w=${W}&lang=${args.lang ?? 'en'}`);
 await page.waitForFunction(() => window.filmReady === true, null, { timeout: 600000 });
 
 const decode = (d) => Buffer.from(d.slice(d.indexOf(',') + 1), 'base64');
@@ -40,6 +40,20 @@ if (args.stills) {
     fs.writeFileSync(path.join(args.dir ?? 'stills', `f${String(f).padStart(5, '0')}.jpg`), decode(d));
     console.log('still', f, (f / 24).toFixed(2) + 's', Date.now() - t0, 'ms');
   }
+} else if (args.localized) {
+  // Render only the frames whose pixels differ by language (text, map), as JPEGs.
+  const dir = args.localized; fs.mkdirSync(dir, { recursive: true });
+  const from = +(args.from ?? 0), to = +(args.to ?? 7200);
+  let n = 0; const t0 = Date.now();
+  for (let f = from; f < to; f++) {
+    const file = path.join(dir, `${String(f + 1).padStart(5, '0')}.jpg`);
+    if (fs.existsSync(file)) continue;
+    if (!(await page.evaluate((f) => window.needsLocalizedFrame(f), f))) continue;
+    const d = await page.evaluate((f) => window.renderFrame(f, 0.95), f);
+    fs.writeFileSync(file + '.tmp', decode(d)); fs.renameSync(file + '.tmp', file);
+    if (++n % 48 === 0) console.log(`frame ${f} rendered ${n} ${((Date.now() - t0) / 1000 / n).toFixed(2)}s/f`);
+  }
+  console.log('localized done', from, to, n);
 } else if (args.sheet) {
   const d = await page.evaluate(() => window.packSheet());
   fs.writeFileSync(args.sheet, decode(d));

@@ -1,6 +1,7 @@
 // THE LAST LANTERN — shot list, blocking, camera and lighting for every frame.
 import * as THREE from 'three';
 import { lerp, clamp, ease, easeOut, easeIn, smooth, range, noise1 } from './util.js';
+import { tr, LANG } from './i18n.js';
 import { petalsField, snowField, fireflyField, heartField, smokeField } from './props.js';
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -44,23 +45,23 @@ function overlays(t) {
   const barCenter = 1 - (1 - 1 / 2.39 * 16 / 9) / 4; // middle of the lower letterbox bar
   for (const [a, b, , text, italic] of SUBS) if (t >= a && t < b) {
     const al = clamp((t - a) / 0.2, 0, 1) * clamp((b - t) / 0.2, 0, 1);
-    texts.push({ text, x: 0.5, y: barCenter, size: 38, font: 'Nunito', weight: '600', style: italic ? 'italic' : 'normal', alpha: al, color: '#f4efe6', shadow: false, spacing: 0.5 });
+    texts.push({ text: tr(text), x: 0.5, y: barCenter, size: 38, font: 'Nunito', weight: '600', style: italic ? 'italic' : 'normal', alpha: al, color: '#f4efe6', shadow: false, spacing: 0.5 });
   }
   for (const [a, b, text] of SUPERS) if (t >= a && t < b) {
     const al = clamp((t - a) / 1.0, 0, 1) * clamp((b - t) / 1.0, 0, 1);
-    texts.push({ text, x: 0.075, y: 0.76, size: 54, style: 'italic', weight: '400', alpha: al, align: 'left', spacing: 1 });
+    texts.push({ text: tr(text), x: 0.075, y: 0.76, size: 54, style: 'italic', weight: '400', alpha: al, align: 'left', spacing: 1 });
   }
   // opening title
   if (t >= 3.5 && t < 12.5) {
     const al = clamp((t - 3.5) / 2.2, 0, 1) * clamp((12.5 - t) / 1.6, 0, 1);
-    texts.push({ text: 'THE LAST LANTERN', x: 0.5, y: 0.47, size: 104, weight: '600', alpha: al, spacing: 18 });
+    texts.push({ text: tr('THE LAST LANTERN'), x: 0.5, y: 0.47, size: LANG === 'fr' ? 88 : 104, weight: '600', alpha: al, spacing: LANG === 'fr' ? 14 : 18 });
     const al2 = clamp((t - 5.5) / 2, 0, 1) * clamp((12.5 - t) / 1.6, 0, 1);
-    texts.push({ text: 'a love story in blocks', x: 0.5, y: 0.56, size: 36, style: 'italic', weight: '400', alpha: al2 * 0.9, spacing: 4 });
+    texts.push({ text: tr('a love story in blocks'), x: 0.5, y: 0.56, size: 36, style: 'italic', weight: '400', alpha: al2 * 0.9, spacing: 4 });
   }
   // end title + credits
   if (t >= 285 && t < 292.5) {
     const al = clamp((t - 285.5) / 2, 0, 1) * clamp((292.5 - t) / 1.2, 0, 1);
-    texts.push({ text: 'THE LAST LANTERN', x: 0.5, y: 0.5, size: 96, weight: '600', alpha: al, spacing: 16 });
+    texts.push({ text: tr('THE LAST LANTERN'), x: 0.5, y: 0.5, size: LANG === 'fr' ? 82 : 96, weight: '600', alpha: al, spacing: LANG === 'fr' ? 12 : 16 });
   }
   const credits = [
     [292.8, 295.6, [['starring', 30, 'italic', '400', 0.44], ['JUNO  ·  ROWAN', 64, 'normal', '600', 0.53]]],
@@ -69,7 +70,7 @@ function overlays(t) {
   ];
   for (const [a, b, lines] of credits) if (t >= a && t < b) {
     const al = clamp((t - a) / 0.6, 0, 1) * clamp((b - t) / 0.5, 0, 1);
-    for (const [text, size, style, weight, y] of lines) texts.push({ text, x: 0.5, y, size, style, weight, alpha: al, spacing: size > 50 ? 12 : 3 });
+    for (const [text, size, style, weight, y] of lines) texts.push({ text: tr(text), x: 0.5, y, size, style, weight, alpha: al, spacing: size > 50 ? 12 : 3 });
   }
   return texts;
 }
@@ -637,6 +638,10 @@ function applyShot(S, shot, lt, t) {
   S.lightPool.assign(S.allLanterns, env.focus, env.lights ?? 1);
   if (S.dof.enabled && S.dof.uniforms.uAperture.value <= 0) S.dof.enabled = false;
   return { env, time: t };
+}
+
+export function needsLocalizedFrame(t) {
+  return overlays(t).length > 0 || (t >= 58 && t < 70.5) || (t >= 246.5 && t < 256.5);
 }
 
 export const FILM = {
