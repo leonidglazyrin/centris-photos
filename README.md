@@ -5,7 +5,8 @@
 A lantern maker named Juno waits at the end of a pier for someone worth lighting the last lantern for. Rowan is a wandering cartographer who arrives in the morning mist.
 
 - **Screenplay:** [`SCREENPLAY.md`](SCREENPLAY.md)
-- **Film:** `THE_LAST_LANTERN_1080p.mp4` (1920×1080 with 2.39:1 letterbox, 24 fps, 5:00, with stereo score)
+- **Film:** `THE_LAST_LANTERN_1080p.mp4` (1920×1080 with 2.39:1 letterbox, 24 fps, 5:00, voiced, with stereo score)
+- **Version française:** `LA_DERNIERE_LANTERNE_1080p.mp4`, the same picture with English subtitles and a French voice track (Juno: Kokoro `ff_siwis`; Rowan: Piper `fr_FR-tom`; narrator: Piper `fr_FR-upmc` Pierre)
 
 ## How it was made
 
@@ -28,7 +29,7 @@ The film is shot in a Minecraft-style voxel world rendered in real time with a c
 cd film
 npm install
 ./render_all.sh          # ~4h on 4 CPU cores (software WebGL); resumable
-python3 voices.py        # needs film/tts/kokoro-v1.0.onnx + voices-v1.0.bin; writes out/final_mix.wav
+python3 voices.py [fr]   # needs film/tts/kokoro-v1.0.onnx + voices-v1.0.bin; writes out/final_mix.wav
 ```
 
 Stills of individual frames: `node render.mjs --stills 700,3000,6600 --dir stills`.
