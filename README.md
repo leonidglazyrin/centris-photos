@@ -19,6 +19,7 @@ The film is shot in a Minecraft-style voxel world rendered in real time with a c
 | **Lighting** | `src/sky.js`: a graded time-of-day colour script (dawn → noon → golden hour → sunset → blue hour → night), a square sun and moon, stars, blocky clouds, and a sun or moon with PCF soft shadows. Lanterns drive a pool of real point lights. Windows glow at night |
 | **Water & FX** | `src/materials.js`, `src/props.js`: planar mirror reflections with ripple normals and fresnel, lake mist layers, waving foliage, snow cover, cherry petals, snowfall, fireflies, chimney smoke, pixel hearts and rising sky lanterns |
 | **Camera & post** | `src/film.js`, `src/main.js`: 27 shots with cranes, dollies, orbits, push-ins, depth of field with focus pulls, handheld micro-shake and cross-dissolves. Post adds HDR bloom, ACES tonemapping, a film grade (split-tone, vignette, grain, chromatic aberration), anamorphic letterbox, titles and subtitles |
+| **Voices** | `voices.py`: Juno, Rowan and a storybook narrator, voiced with the open-source Kokoro neural TTS (`af_heart`, `am_michael`, `bm_george`). Each line is timed to the picture, the score is ducked under speech, and a touch of room reverb is added |
 | **Score** | `music.py`: an original piano, strings, pad and bell score synthesized with numpy and cued to the picture, with lake, birdsong, winter wind and cricket ambience |
 
 ## Rendering
@@ -27,6 +28,7 @@ The film is shot in a Minecraft-style voxel world rendered in real time with a c
 cd film
 npm install
 ./render_all.sh          # ~4h on 4 CPU cores (software WebGL); resumable
+python3 voices.py        # needs film/tts/kokoro-v1.0.onnx + voices-v1.0.bin; writes out/final_mix.wav
 ```
 
 Stills of individual frames: `node render.mjs --stills 700,3000,6600 --dir stills`.
