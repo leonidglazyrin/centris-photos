@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Finger Picker</title>
+<style>
+  :root { --fg: #fff; --muted: rgba(255,255,255,.55); --chip: rgba(255,255,255,.12); --chip-on: #fff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hint {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; pointer-events: none; text-align: center; padding: 16px; transition: opacity .3s;
+  }
+  #hint h1 { margin: 0; font-size: clamp(22px, 6vw, 34px); font-weight: 700; letter-spacing: -.01em; }
+  #hint p { margin: 0; color: var(--muted); font-size: 15px; max-width: 320px; line-height: 1.4; }
+  #bar {
+    position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); transition: opacity .3s, transform .3s;
+  }
+  #bar.hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+  .group { display: flex; background: var(--chip); border-radius: 999px; padding: 4px; }
+  .group button {
+    border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 14px; font-weight: 600;
+    min-width: 40px; height: 36px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  }
+  .group button.on { background: var(--chip-on); color: #000; }
+  #label {
+    position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center;
+    font-size: 14px; font-weight: 600; color: var(--muted); pointer-events: none; letter-spacing: .04em; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="label"></div>
+<div id="hint">
+  <h1>Place your fingers</h1>
+  <p id="hintText">Everyone puts a finger on the screen. Hold still and one gets picked.</p>
+</div>
+<div id="bar">
+  <div class="group" id="modeGroup">
+    <button data-mode="pick" class="on">Pick</button>
+    <button data-mode="teams">Teams</button>
+  </div>
+  <div class="group" id="countGroup"></div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const hint = document.getElementById('hint');
+  const hintText = document.getElementById('hintText');
+  const bar = document.getElementById('bar');
+  const label = document.getElementById('label');
+  const countGroup = document.getElementById('countGroup');
+
+  const PALETTE = ['#ff3b5c','#ffb020','#2bd96b','#18b6ff','#a35bff','#ff6bd6','#00e0c6','#ff7a1a','#f5e432','#5b7cff','#c2ff3d','#ff4d2e'];
+  const TEAM_COLORS = ['#ff3b5c','#18b6ff','#2bd96b','#ffb020','#a35bff'];
+  const SETTLE_MS = 900;     // fingers must be stable this long before countdown starts
+  const COUNTDOWN_MS = 2200; // countdown length
+  const R = 46;              // finger circle radius (CSS px)
+
+  let mode = 'pick';         // 'pick' | 'teams'
+  let count = 1;             // winners (pick) or number of teams (teams)
+  let fingers = new Map();   // id -> finger
+  let phase = 'idle';        // idle | waiting | counting | picked
+  let lastChange = 0, countStart = 0, pickedAt = 0;
+  let winners = [];
+  let floodColor = null;
+  let dpr = 1, W = 0, H = 0;
+  const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+
+  if (!isTouch) hintText.textContent = 'Click to drop "fingers" (click one again to remove). Touch screens work with real fingers.';
+
+  // ---- controls ----
+  function renderCounts() {
+    countGroup.innerHTML = '';
+    const opts = mode === 'pick' ? [1,2,3,4] : [2,3,4,5];
+    if (!opts.includes(count)) count = opts[0];
+    for (const n of opts) {
+      const b = document.createElement('button');
+      b.textContent = n;
+      b.title = mode === 'pick' ? `${n} winner${n>1?'s':''}` : `${n} teams`;
+      if (n === count) b.classList.add('on');
+      b.onclick = e => { e.stopPropagation(); count = n; renderCounts(); updateLabel(); };
+      countGroup.appendChild(b);
+    }
+  }
+  document.querySelectorAll('#modeGroup button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      mode = b.dataset.mode;
+      document.querySelectorAll('#modeGroup button').forEach(x => x.classList.toggle('on', x === b));
+      renderCounts(); updateLabel();
+    };
+  });
+  function updateLabel() {
+    label.textContent = mode === 'pick' ? `Pick ${count} winner${count>1?'s':''}` : `Split into ${count} teams`;
+  }
+  // stop bar touches from becoming fingers
+  ['pointerdown','touchstart'].forEach(ev => bar.addEventListener(ev, e => e.stopPropagation()));
+
+  // ---- sizing ----
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = innerWidth; H = innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  // ---- finger management ----
+  function nextColor() {
+    const used = new Set([...fingers.values()].map(f => f.color));
+    const free = PALETTE.filter(c => !used.has(c));
+    const pool = free.length ? free : PALETTE;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  function minFingers() { return mode === 'pick' ? count + 1 : count; }
+
+  function addFinger(id, x, y) {
+    if (phase === 'picked') return;
+    fingers.set(id, { id, x, y, color: nextColor(), born: performance.now(), dying: 0, team: -1 });
+    changed();
+  }
+  function moveFinger(id, x, y) {
+    const f = fingers.get(id);
+    if (f) { f.x = x; f.y = y; }
+  }
+  function removeFinger(id) {
+    const f = fingers.get(id);
+    if (!f) return;
+    if (phase === 'picked') {
+      f.dying = performance.now();
+      setTimeout(() => { fingers.delete(id); if (![...fingers.values()].some(g => !g.dying)) reset(); }, 250);
+      return;
+    }
+    fingers.delete(id);
+    changed();
+  }
+  function changed() {
+    lastChange = performance.now();
+    phase = fingers.size ? 'waiting' : 'idle';
+    buzz(8);
+  }
+  function reset() {
+    fingers.clear(); winners = []; floodColor = null; phase = 'idle';
+  }
+
+  function pick() {
+    const list = [...fingers.values()];
+    shuffle(list);
+    if (mode === 'pick') {
+      winners = list.slice(0, count);
+      floodColor = count === 1 ? winners[0].color : null;
+    } else {
+      list.forEach((f, i) => { f.team = i % count; f.color = TEAM_COLORS[f.team]; });
+      winners = list;
+      floodColor = null;
+    }
+    phase = 'picked';
+    pickedAt = performance.now();
+    buzz([40, 60, 120]);
+  }
+
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const r = new Uint32Array(1); crypto.getRandomValues(r);
+      const j = r[0] % (i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (_) {} }
+
+  // ---- input ----
+  if (isTouch) {
+    const handle = (e, fn) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) fn(t.identifier, t.clientX, t.clientY);
+    };
+    canvas.addEventListener('touchstart', e => handle(e, addFinger), { passive: false });
+    canvas.addEventListener('touchmove', e => handle(e, moveFinger), { passive: false });
+    canvas.addEventListener('touchend', e => handle(e, removeFinger), { passive: false });
+    canvas.addEventListener('touchcancel', e => handle(e, removeFinger), { passive: false });
+  } else {
+    // Desktop: clicks place sticky fingers; clicking one removes it.
+    let nextId = 1;
+    canvas.addEventListener('pointerdown', e => {
+      if (phase === 'picked') { reset(); return; }
+      for (const f of fingers.values()) {
+        if (Math.hypot(f.x - e.clientX, f.y - e.clientY) < R) { removeFinger(f.id); return; }
+      }
+      addFinger('m' + nextId++, e.clientX, e.clientY);
+    });
+  }
+  addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('gesturestart', e => e.preventDefault());
+
+  // ---- drawing ----
+  const ease = t => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 3);
+  const easeBack = t => { t = Math.min(Math.max(t, 0), 1); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+
+  function drawFinger(f, now, opts = {}) {
+    const age = now - f.born;
+    let s = easeBack(age / 350);
+    if (f.dying) s *= 1 - ease((now - f.dying) / 220);
+    if (opts.shrink != null) s *= opts.shrink;
+    if (s <= 0.01) return;
+    const pulse = 1 + Math.sin(now / 260 + f.born) * 0.05;
+    const r = R * s;
+
+    // soft glow
+    const g = ctx.createRadialGradient(f.x, f.y, r * 0.6, f.x, f.y, r * 2.1);
+    g.addColorStop(0, hexA(f.color, 0.35));
+    g.addColorStop(1, hexA(f.color, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(f.x, f.y, r * 2.1, 0, Math.PI * 2); ctx.fill();
+
+    // core
+    ctx.fillStyle = f.color;
+    ctx.beginPath(); ctx.arc(f.x, f.y, r * pulse, 0, Math.PI * 2); ctx.fill();
+
+    // outer ring
+    ctx.strokeStyle = f.color;
+    ctx.lineWidth = 5 * s;
+    ctx.beginPath(); ctx.arc(f.x, f.y, r * 1.38 * pulse, 0, Math.PI * 2); ctx.stroke();
+
+    // countdown arc
+    if (opts.progress != null) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 6 * s;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, r * 1.7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * opts.progress);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+
+    // winner highlight
+    if (opts.winner) {
+      const t = ease((now - pickedAt) / 500);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(f.x, f.y, r * (1.4 + 0.5 * t) * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(f.x, f.y, r * (1.9 + 0.5 * t) * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    if (opts.text) {
+      ctx.fillStyle = '#000';
+      ctx.font = `700 ${Math.round(26 * s)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(opts.text, f.x, f.y + 1);
+    }
+  }
+
+  function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  function frame(now) {
+    // phase transitions
+    const enough = fingers.size >= minFingers();
+    if (phase === 'waiting' && enough && now - lastChange > SETTLE_MS) { phase = 'counting'; countStart = now; }
+    if (phase === 'counting' && !enough) phase = 'waiting';
+    if (phase === 'counting' && now - countStart >= COUNTDOWN_MS) pick();
+
+    // background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    if (phase === 'picked' && floodColor) {
+      const w = winners[0];
+      const maxR = Math.hypot(Math.max(w.x, W - w.x), Math.max(w.y, H - w.y));
+      const t = ease((now - pickedAt) / 650);
+      ctx.fillStyle = floodColor;
+      ctx.beginPath(); ctx.arc(w.x, w.y, maxR * t, 0, Math.PI * 2); ctx.fill();
+      // dark hole behind winner so it stays visible
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(w.x, w.y, R * 2.6 * t, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const progress = phase === 'counting' ? (now - countStart) / COUNTDOWN_MS : null;
+    const losersShrink = phase === 'picked' ? 1 - ease((now - pickedAt) / 400) : null;
+
+    for (const f of fingers.values()) {
+      if (phase === 'picked') {
+        if (mode === 'teams') {
+          drawFinger(f, now, { text: String(f.team + 1) });
+        } else if (winners.includes(f)) {
+          const idx = winners.indexOf(f);
+          drawFinger(f, now, { winner: true, text: count > 1 ? String(idx + 1) : null });
+        } else {
+          drawFinger(f, now, { shrink: losersShrink });
+        }
+      } else {
+        drawFinger(f, now, { progress });
+      }
+    }
+
+    const active = fingers.size > 0;
+    hint.style.opacity = active ? 0 : 1;
+    bar.classList.toggle('hidden', active);
+    label.style.opacity = active && phase !== 'picked' ? 0 : 1;
+    if (phase === 'picked') {
+      label.style.color = '#fff';
+      label.textContent = mode === 'teams' ? 'Teams!' : (count === 1 ? 'Winner!' : 'Winners!');
+    } else {
+      label.style.color = '';
+      if (!active) updateLabel();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  renderCounts(); updateLabel();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
