@@ -31,3 +31,17 @@ Then open http://localhost:8000, enter a number with its country code (e.g. `+1 
 - The server only listens on `localhost`, because it holds your API key. Don't expose it to the internet as is.
 - Twilio and SIP-trunk numbers are both supported; the server detects which one your phone number uses.
 - Set `PORT` to use a port other than 8000.
+
+## Hosted version (works from a phone)
+
+- `web/index.html`: the mobile page. It lists your ElevenLabs agents and phone numbers, so there are no IDs to copy.
+- `supabase/functions/elevenlabs-caller/`: a Supabase Edge Function that holds the API key and talks to ElevenLabs. It's deployed to the `repasgarde` Supabase project.
+
+The function reads two secrets, set in the Supabase dashboard under Edge Functions → Secrets:
+
+| Secret | Value |
+|---|---|
+| `ELEVENLABS_API_KEY` | your ElevenLabs API key |
+| `APP_PASSCODE` | any passcode you choose; the page asks for it once per device |
+
+The page is served from GitHub through rawcdn.githack.com. The first time you open it, githack shows an "Open the page" notice.
