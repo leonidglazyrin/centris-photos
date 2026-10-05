@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agent Test Caller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Layout: one narrow column, dialer-first. Setup tucked above, call log below. */
+  :root {
+    --bg: #f3f4f1; --card: #ffffff; --text: #1a1d1b; --muted: #636a65;
+    --border: #d6dad5; --accent: #1d6b48; --accent-text: #ffffff;
+    --error: #b42318; --agent: #e7f1eb; --callee: #ecedea;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121513; --card: #1b1f1c; --text: #e9ece9; --muted: #98a19b;
+      --border: #303632; --accent: #45b882; --accent-text: #0b1d14;
+      --error: #f97066; --agent: #1a2b22; --callee: #232724;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--sans);
+    padding: calc(32px + env(safe-area-inset-top, 0px)) 16px calc(32px + env(safe-area-inset-bottom, 0px));
+  }
+  main { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 1.35rem; margin: 0; text-wrap: balance; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  label { font-weight: 600; font-size: .85rem; letter-spacing: .02em; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  input, select {
+    width: 100%; font: inherit; padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  #number { font-family: var(--mono); font-size: 1.5rem; letter-spacing: .02em; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button {
+    font: inherit; font-weight: 600; font-size: 1.1rem; padding: 14px; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .link { background: none; color: var(--muted); font-size: .85rem; font-weight: 400; padding: 0; text-decoration: underline; align-self: flex-start; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 0; }
+  .error { color: var(--error); }
+  #status:empty { display: none; }
+  #status { font-weight: 600; margin: 0; }
+  #transcript { display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 8px 12px; border-radius: 8px; font-size: .95rem; overflow-wrap: anywhere; }
+  .msg b { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .agent { background: var(--agent); }
+  .user { background: var(--callee); }
+  @media (prefers-reduced-motion: no-preference) { button { transition: opacity .15s; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent test caller</h1>
+
+  <form class="card" id="lock" hidden>
+    <div class="field">
+      <label for="passcode">Passcode</label>
+      <input id="passcode" type="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">Unlock</button>
+    <p class="hint error" id="lockError"></p>
+  </form>
+
+  <p class="hint" id="loading" hidden>Loading your agents…</p>
+
+  <form class="card" id="dialer" hidden>
+    <div class="field">
+      <label for="agent">Agent</label>
+      <select id="agent"></select>
+    </div>
+    <div class="field">
+      <label for="from">Call from</label>
+      <select id="from"></select>
+    </div>
+    <div class="field">
+      <label for="number">Number to call</label>
+      <input id="number" type="tel" inputmode="tel" placeholder="+1 514 555 1234" autocomplete="tel" required>
+      <p class="hint">Include the country code (+1 for Canada and the US).</p>
+    </div>
+    <button id="call" type="submit">Call</button>
+    <p id="status" role="status"></p>
+    <div id="transcript"></div>
+    <button class="link" id="logout" type="button">Lock this device</button>
+  </form>
+</main>
+<script>
+const FUNCTION_URL = "https://cdkmpeihiidgpleknzhj.supabase.co/functions/v1/elevenlabs-caller";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let passcode = store.get("passcode");
+let phones = [];
+let pollTimer;
+
+async function api(payload) {
+  const res = await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-passcode": passcode },
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (!res.ok) {
+    const err = new Error(data.error || "Request failed (" + res.status + ")");
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function showLock(message = "") {
+  $("dialer").hidden = true;
+  $("loading").hidden = true;
+  $("lock").hidden = false;
+  $("lockError").textContent = message;
+  $("passcode").focus();
+}
+
+function option(value, text) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = text;
+  return o;
+}
+
+async function load() {
+  $("lock").hidden = true;
+  $("loading").hidden = false;
+  try {
+    const { agents, phone_numbers } = await api({ action: "setup" });
+    phones = phone_numbers;
+    $("agent").replaceChildren(...agents.map((a) => option(a.id, a.name)));
+    $("from").replaceChildren(...phones.map((p) => option(p.id, p.label ? p.number + " · " + p.label : p.number)));
+    if (!agents.length || !phones.length) {
+      setStatus(!agents.length ? "No agents found in your ElevenLabs account." :
+        "No phone numbers in ElevenLabs yet. Add one under Phone Numbers in the portal.", true);
+      $("call").disabled = true;
+    }
+    const savedFrom = store.get("from");
+    if (phones.some((p) => p.id === savedFrom)) $("from").value = savedFrom;
+    const savedAgent = store.get("agent");
+    if (agents.some((a) => a.id === savedAgent)) $("agent").value = savedAgent;
+    else pickAssignedAgent();
+    $("number").value = store.get("number");
+    $("loading").hidden = true;
+    $("dialer").hidden = false;
+  } catch (e) {
+    if (e.status === 401) { store.del("passcode"); showLock("That passcode is wrong."); }
+    else { showLock(e.message); }
+  }
+}
+
+function pickAssignedAgent() {
+  const phone = phones.find((p) => p.id === $("from").value);
+  if (phone && phone.agent_id && [...$("agent").options].some((o) => o.value === phone.agent_id)) {
+    $("agent").value = phone.agent_id;
+  }
+}
+
+function setStatus(text, isError = false) {
+  $("status").textContent = text;
+  $("status").className = isError ? "error" : "";
+}
+
+$("lock").addEventListener("submit", (e) => {
+  e.preventDefault();
+  passcode = $("passcode").value.trim();
+  store.set("passcode", passcode);
+  load();
+});
+
+$("logout").addEventListener("click", () => {
+  clearTimeout(pollTimer);
+  passcode = "";
+  store.del("passcode");
+  $("passcode").value = "";
+  showLock();
+});
+
+$("from").addEventListener("change", () => { store.set("from", $("from").value); pickAssignedAgent(); });
+$("agent").addEventListener("change", () => store.set("agent", $("agent").value));
+
+$("dialer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearTimeout(pollTimer);
+  $("transcript").replaceChildren();
+  const number = $("number").value.trim();
+  store.set("number", number);
+  $("call").disabled = true;
+  setStatus("Placing call…");
+  try {
+    const data = await api({
+      action: "call", to_number: number,
+      agent_id: $("agent").value, phone_number_id: $("from").value,
+    });
+    setStatus("Calling " + number + "…");
+    if (data.conversation_id) poll(data.conversation_id);
+  } catch (err) {
+    if (err.status === 401) { store.del("passcode"); showLock("That passcode is wrong."); }
+    setStatus(err.message, true);
+  }
+  $("call").disabled = false;
+});
+
+const LABELS = {
+  initiated: "Ringing…", "in-progress": "Call in progress",
+  processing: "Call ended. Processing…", done: "Call finished", failed: "Call failed",
+};
+
+async function poll(id) {
+  try {
+    const data = await api({ action: "conversation", conversation_id: id });
+    setStatus(LABELS[data.status] || data.status, data.status === "failed");
+    renderTranscript(data.transcript);
+    if (data.status === "done" || data.status === "failed") return;
+  } catch {}
+  pollTimer = setTimeout(() => poll(id), 2000);
+}
+
+function renderTranscript(items) {
+  $("transcript").replaceChildren(...(items || []).map((t) => {
+    const div = document.createElement("div");
+    div.className = "msg " + (t.role === "agent" ? "agent" : "user");
+    const who = document.createElement("b");
+    who.textContent = t.role === "agent" ? "Agent" : "Callee";
+    div.append(who, document.createTextNode(t.message));
+    return div;
+  }));
+}
+
+if (passcode) load(); else showLock();
+</script>
+</body>
+</html>
