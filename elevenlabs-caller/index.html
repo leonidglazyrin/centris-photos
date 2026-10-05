@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Test Caller</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --text: #1b1b1b; --muted: #6b6b6b;
+    --border: #dcdcd8; --accent: #1f7a4d; --accent-text: #fff;
+    --error: #b42318; --agent: #eef5f1; --user: #f1f1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --card: #1e1e1e; --text: #ececec; --muted: #9a9a9a;
+      --border: #333; --accent: #3fb07a; --accent-text: #0d1f16;
+      --error: #f97066; --agent: #1b2a22; --user: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 440px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .9rem; word-break: break-all; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  label { display: block; font-weight: 600; margin-bottom: 8px; }
+  input {
+    width: 100%; font: inherit; font-size: 1.25rem; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 16px; }
+  button {
+    width: 100%; font: inherit; font-weight: 600; font-size: 1.1rem; padding: 12px;
+    border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text); cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-top: 16px; min-height: 1.5em; }
+  #status.error { color: var(--error); }
+  .warn { border-color: var(--error); color: var(--error); margin-bottom: 16px; }
+  #transcript { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 8px 12px; border-radius: 8px; font-size: .95rem; }
+  .msg b { display: block; font-size: .75rem; text-transform: uppercase; color: var(--muted); }
+  .agent { background: var(--agent); }
+  .user { background: var(--user); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent test caller</h1>
+  <p class="sub" id="agent">Loading…</p>
+  <div class="card warn" id="config" hidden></div>
+  <form class="card" id="form">
+    <label for="number">Phone number to call</label>
+    <input id="number" type="tel" placeholder="+1 514 555 1234" autocomplete="tel" required>
+    <p class="hint">Include the country code (+1 for Canada/US).</p>
+    <button id="call" type="submit">Call</button>
+    <div id="status" role="status"></div>
+    <div id="transcript"></div>
+  </form>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), transcriptEl = $("transcript"), callBtn = $("call");
+let pollTimer;
+
+try { $("number").value = localStorage.getItem("lastNumber") || ""; } catch {}
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.className = isError ? "error" : "";
+}
+
+fetch("/api/config").then((r) => r.json()).then((cfg) => {
+  $("agent").textContent = cfg.agent_id ? "Agent " + cfg.agent_id : "No agent configured";
+  if (cfg.missing.length) {
+    $("config").hidden = false;
+    $("config").textContent = "Missing settings on the server: " + cfg.missing.join(", ");
+    callBtn.disabled = true;
+  }
+});
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearTimeout(pollTimer);
+  transcriptEl.innerHTML = "";
+  const number = $("number").value.trim();
+  try { localStorage.setItem("lastNumber", number); } catch {}
+  callBtn.disabled = true;
+  setStatus("Placing call…");
+  try {
+    const res = await fetch("/api/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_number: number }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.success === false) throw new Error(errorText(data));
+    setStatus("Calling " + number + "…");
+    if (data.conversation_id) poll(data.conversation_id);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+  callBtn.disabled = false;
+});
+
+function errorText(data) {
+  const d = data.detail ?? data.message ?? data;
+  if (typeof d === "string") return d;
+  if (d && d.message) return d.message;
+  return JSON.stringify(d);
+}
+
+const LABELS = {
+  initiated: "Ringing…", "in-progress": "Call in progress",
+  processing: "Call ended, processing…", done: "Call finished", failed: "Call failed",
+};
+
+async function poll(id) {
+  try {
+    const res = await fetch("/api/conversation/" + id);
+    if (res.ok) {
+      const data = await res.json();
+      setStatus(LABELS[data.status] || data.status, data.status === "failed");
+      renderTranscript(data.transcript);
+      if (data.status === "done" || data.status === "failed") return;
+    }
+  } catch {}
+  pollTimer = setTimeout(() => poll(id), 2000);
+}
+
+function renderTranscript(items) {
+  transcriptEl.innerHTML = "";
+  for (const t of items || []) {
+    const div = document.createElement("div");
+    div.className = "msg " + (t.role === "agent" ? "agent" : "user");
+    const who = document.createElement("b");
+    who.textContent = t.role === "agent" ? "Agent" : "Callee";
+    div.append(who, document.createTextNode(t.message));
+    transcriptEl.append(div);
+  }
+}
+</script>
+</body>
+</html>
