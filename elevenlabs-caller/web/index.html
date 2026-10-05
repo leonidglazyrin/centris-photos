@@ -205,7 +205,7 @@ $("dialer").addEventListener("submit", async (e) => {
   setStatus("Placing call…");
   try {
     const data = await api({
-      action: "call", to_number: number,
+      action: "call", to_number: withCountryCode(number),
       agent_id: $("agent").value, phone_number_id: $("from").value,
     });
     setStatus("Calling " + number + "…");
@@ -216,6 +216,15 @@ $("dialer").addEventListener("submit", async (e) => {
   }
   $("call").disabled = false;
 });
+
+// Numbers without a "+" are Canada/US: add +1 before sending.
+function withCountryCode(raw) {
+  const digits = raw.replace(/\D/g, "");
+  if (raw.startsWith("+")) return "+" + digits;
+  if (digits.length === 10) return "+1" + digits;
+  if (digits.length === 11 && digits.startsWith("1")) return "+" + digits;
+  return raw;
+}
 
 const LABELS = {
   initiated: "Ringing…", "in-progress": "Call in progress",
