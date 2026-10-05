@@ -33,6 +33,19 @@ INDEX = Path(__file__).with_name("index.html")
 E164 = re.compile(r"^\+[1-9]\d{6,14}$")
 
 
+def normalize_number(raw):
+    """Numbers without a "+" are treated as Canada/US (+1)."""
+    raw = str(raw).strip()
+    digits = re.sub(r"\D", "", raw)
+    if raw.startswith("+"):
+        return "+" + digits
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    return ""
+
+
 def elevenlabs(method, path, body=None):
     """Call the ElevenLabs API. Returns (status, parsed JSON)."""
     data = json.dumps(body).encode() if body is not None else None
@@ -117,10 +130,10 @@ class Handler(BaseHTTPRequestHandler):
             number = json.loads(self.rfile.read(length) or b"{}").get("to_number", "")
         except ValueError:
             return self.send_json(400, {"detail": "Invalid JSON"})
-        number = re.sub(r"[\s().-]", "", str(number))
+        number = normalize_number(number)
         if not E164.match(number):
             return self.send_json(
-                400, {"detail": "Use international format with country code, e.g. +15145551234"}
+                400, {"detail": "Enter a 10-digit number, e.g. 514 555 1234"}
             )
         status, data = elevenlabs(
             "POST",

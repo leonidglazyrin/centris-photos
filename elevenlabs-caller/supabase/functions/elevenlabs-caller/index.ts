@@ -11,6 +11,16 @@ const API_KEY = Deno.env.get("ELEVENLABS_API_KEY") ?? "";
 const PASSCODE = Deno.env.get("APP_PASSCODE") ?? "";
 const E164 = /^\+[1-9]\d{6,14}$/;
 
+// Numbers without a "+" are treated as Canada/US (+1): 5145551234 or 15145551234.
+function normalizeNumber(raw: string) {
+  const s = raw.trim();
+  const digits = s.replace(/\D/g, "");
+  if (s.startsWith("+")) return "+" + digits;
+  if (digits.length === 10) return "+1" + digits;
+  if (digits.length === 11 && digits.startsWith("1")) return "+" + digits;
+  return "";
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, x-passcode",
@@ -83,9 +93,9 @@ async function setup() {
 }
 
 async function call(body: any) {
-  const number = String(body.to_number ?? "").replace(/[\s().-]/g, "");
+  const number = normalizeNumber(String(body.to_number ?? ""));
   if (!E164.test(number)) {
-    throw { status: 400, message: "Use international format with country code, e.g. +15145551234" };
+    throw { status: 400, message: "Enter a 10-digit number, e.g. 514 555 1234" };
   }
   if (!body.agent_id || !body.phone_number_id) {
     throw { status: 400, message: "Pick an agent and a phone number to call from" };
